@@ -49,7 +49,7 @@ function getRank(cumulativeMatchedBV) {
   return null;
 }
 
-const ADMIN_PASSCODE_HASH = "240c4c1ebfb9eb172c65514e616340634d2075af6ad95670cc2112f4e849fd40";
+const ADMIN_PASSCODE_HASH = "d6406da48b892cc57a7ccff6234dad662143a4ab9f8bd31e79ce47f4d98b7a37"
 
 async function hashPassword(plain) {
   const enc = new TextEncoder().encode(plain);
