@@ -49,12 +49,34 @@ function getRank(cumulativeMatchedBV) {
   return null;
 }
 
-const ADMIN_PASSCODE_HASH = "d6406da48b892cc57a7ccff6234dad662143a4ab9f8bd31e79ce47f4d98b7a37"
+const ADMIN_PASSCODE_HASH = "d6406da48b892cc57a7ccff6234dad662143a4ab9f8bd31e79ce47f4d98b7a37";
+const ADMIN_RECOVERY_HASH = "d94e1f0127359067b746c4559ed92b5ec4926e4f7369e751e349fece1e6c4a9e";
 
 async function hashPassword(plain) {
   const enc = new TextEncoder().encode(plain);
   const digest = await crypto.subtle.digest("SHA-256", enc);
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/* ---------------- Click "tick" sound (no audio file needed) ---------------- */
+function playTickSound() {
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    const ctx = new AudioContextClass();
+    const oscillator = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+    oscillator.connect(gainNode);
+    gainNode.connect(ctx.destination);
+    oscillator.type = "square";
+    oscillator.frequency.value = 900;
+    gainNode.gain.setValueAtTime(0.12, ctx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.06);
+    oscillator.start();
+    oscillator.stop(ctx.currentTime + 0.06);
+    setTimeout(() => ctx.close(), 150);
+  } catch (e) {
+    /* ignore if audio not supported */
+  }
 }
 
 const firebaseConfig = {
@@ -172,6 +194,8 @@ export default function EverzonDashboard() {
   const [income, setIncome] = useState([]);
   const [payment, setPayment] = useState({ upiId: "", accountName: "", accountNumber: "", ifsc: "", qr: "" });
   const [products, setProducts] = useState(PRODUCTS);
+  const [adminPasscodeHash, setAdminPasscodeHash] = useState(ADMIN_PASSCODE_HASH);
+  const [passwordRequests, setPasswordRequests] = useState([]);
 
   const [tab, setTab] = useState("dashboard");
   const [sessionId, setSessionId] = useState("");
@@ -183,21 +207,37 @@ export default function EverzonDashboard() {
   const [adminError, setAdminError] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [portalMode, setPortalMode] = useState(null);
+  const [showForgotMember, setShowForgotMember] = useState(false);
+  const [showForgotAdmin, setShowForgotAdmin] = useState(false);
+
+  useEffect(() => {
+    const handleGlobalClick = (e) => {
+      if (e.target.closest("button, a, select, input[type='submit']")) {
+        playTickSound();
+      }
+    };
+    document.addEventListener("click", handleGlobalClick, true);
+    return () => document.removeEventListener("click", handleGlobalClick, true);
+  }, []);
 
   const refreshAll = useCallback(async () => {
-    const [u, o, i, p, pr] = await Promise.all([
+    const [u, o, i, p, pr, aph, pwr] = await Promise.all([
       loadKey("ez_users", []),
       loadKey("ez_orders", []),
       loadKey("ez_income", []),
       loadKey("ez_payment", { upiId: "", accountName: "", accountNumber: "", ifsc: "", qr: "" }),
       loadKey("ez_products", PRODUCTS),
+      loadKey("ez_admin_passcode", ADMIN_PASSCODE_HASH),
+      loadKey("ez_password_requests", []),
     ]);
     setUsers(u);
     setOrders(o);
     setIncome(i);
     setPayment(p);
     setProducts(pr);
-    return { u, o, i, p, pr };
+    setAdminPasscodeHash(aph);
+    setPasswordRequests(pwr);
+    return { u, o, i, p, pr, aph, pwr };
   }, []);
 
   useEffect(() => {
@@ -236,6 +276,22 @@ export default function EverzonDashboard() {
   }, [refreshAll]);
 
   const currentUser = findUser(users, sessionId);
+
+  const approvePasswordRequest = async (userId) => {
+    const req = passwordRequests.find((r) => r.userId === userId);
+    if (!req) return;
+    const updatedUsers = users.map((u) => (u.id === userId ? { ...u, password: req.newPasswordHash } : u));
+    const updatedRequests = passwordRequests.filter((r) => r.userId !== userId);
+    await saveKey("ez_users", updatedUsers);
+    await saveKey("ez_password_requests", updatedRequests);
+    setUsers(updatedUsers);
+    setPasswordRequests(updatedRequests);
+  };
+  const rejectPasswordRequest = async (userId) => {
+    const updatedRequests = passwordRequests.filter((r) => r.userId !== userId);
+    await saveKey("ez_password_requests", updatedRequests);
+    setPasswordRequests(updatedRequests);
+  };
 
   if (loading) {
     return (
@@ -413,6 +469,12 @@ export default function EverzonDashboard() {
             <LogIn size={15} /> Login
           </button>
           {loginError && <span className="text-xs text-red-600 block mt-2">{loginError}</span>}
+          <button
+            onClick={() => setShowForgotMember(true)}
+            className="text-xs text-[#0F9B8E] underline mt-3 block mx-auto"
+          >
+            Forgot Password?
+          </button>
         </div>
       )}
 
@@ -434,7 +496,7 @@ export default function EverzonDashboard() {
           <button
             onClick={async () => {
               const enteredHash = await hashPassword(adminInput);
-              if (enteredHash === ADMIN_PASSCODE_HASH) {
+              if (enteredHash === adminPasscodeHash) {
                 setIsAdmin(true);
                 setAdminError("");
                 setTab("orders");
@@ -448,6 +510,12 @@ export default function EverzonDashboard() {
             Enter Admin
           </button>
           {adminError && <span className="text-xs text-red-600 block mt-2">{adminError}</span>}
+          <button
+            onClick={() => setShowForgotAdmin(true)}
+            className="text-xs text-[#0F9B8E] underline mt-3 block mx-auto"
+          >
+            Forgot Passcode?
+          </button>
         </div>
       )}
 
@@ -479,6 +547,9 @@ export default function EverzonDashboard() {
                 products={products}
                 currentUser={currentUser}
                 isAdmin={isAdmin}
+                passwordRequests={passwordRequests}
+                onApprovePassword={approvePasswordRequest}
+                onRejectPassword={rejectPasswordRequest}
               />
             )}
             {tab === "income" && (
@@ -528,10 +599,160 @@ export default function EverzonDashboard() {
           </nav>
         </>
       )}
+
+      {showForgotMember && (
+        <ForgotMemberPasswordModal users={users} onClose={() => setShowForgotMember(false)} />
+      )}
+      {showForgotAdmin && (
+        <ForgotAdminPasscodeModal
+          onClose={() => setShowForgotAdmin(false)}
+          onSuccess={(newHash) => {
+            setAdminPasscodeHash(newHash);
+            setShowForgotAdmin(false);
+          }}
+        />
+      )}
     </div>
   );
 }
 
+/* ==================================================================== */
+/* FORGOT PASSWORD / PASSCODE MODALS                                    */
+/* ==================================================================== */
+function ForgotMemberPasswordModal({ users, onClose }) {
+  const [id, setId] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState("");
+  const [done, setDone] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    setError("");
+    const upperId = id.trim().toUpperCase();
+    const match = users.find((u) => u.id === upperId);
+    if (!match) {
+      setError("ID not found");
+      return;
+    }
+    if (!newPassword.trim() || newPassword.length < 6) {
+      setError("Password must be at least 6 characters");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+    setSaving(true);
+    const passwordHash = await hashPassword(newPassword);
+    const requests = await loadKey("ez_password_requests", []);
+    const updated = [
+      ...requests.filter((r) => r.userId !== upperId),
+      {
+        userId: upperId,
+        newPasswordHash: passwordHash,
+        requestedAt: new Date().toISOString(),
+        status: "pending",
+      },
+    ];
+    await saveKey("ez_password_requests", updated);
+    setSaving(false);
+    setDone(true);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white w-full max-w-sm rounded-2xl p-6 text-center">
+        {done ? (
+          <>
+            <Check size={36} className="mx-auto text-[#0F9B8E]" />
+            <h3 className="font-display font-bold text-lg text-[#1B1F3B] mt-3">Request Sent</h3>
+            <p className="text-xs text-[#6E7482] mt-2">
+              Aapki nayi password admin ke approve karne ke baad active ho jayegi.
+            </p>
+            <button onClick={onClose} className="w-full bg-[#1B1F3B] text-white rounded-xl py-2.5 mt-5 text-sm font-medium">
+              Done
+            </button>
+          </>
+        ) : (
+          <>
+            <h3 className="font-display font-bold text-lg text-[#1B1F3B]">Forgot Password</h3>
+            <p className="text-xs text-[#6E7482] mt-1 mb-4">Nayi password set karo — admin approval ke baad active hogi.</p>
+            <div className="space-y-3 text-left">
+              <input value={id} onChange={(e) => setId(e.target.value.toUpperCase())} placeholder="Distributor ID" className="w-full border border-[#D8D5CC] rounded-lg px-3 py-2.5 text-sm font-mono-tag" />
+              <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="New Password" className="w-full border border-[#D8D5CC] rounded-lg px-3 py-2.5 text-sm" />
+              <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Confirm New Password" className="w-full border border-[#D8D5CC] rounded-lg px-3 py-2.5 text-sm" />
+            </div>
+            {error && <div className="flex items-center gap-1.5 text-red-600 text-xs mt-3"><AlertCircle size={14} /> {error}</div>}
+            <div className="flex gap-2 mt-5">
+              <button onClick={onClose} className="flex-1 border border-[#D8D5CC] rounded-xl py-2.5 text-sm font-medium">Cancel</button>
+              <button onClick={submit} disabled={saving} className="flex-1 rounded-xl py-2.5 text-sm font-medium text-white flex items-center justify-center gap-1.5" style={{ backgroundColor: "#1B1F3B" }}>
+                {saving ? <Loader2 size={14} className="animate-spin" /> : null}
+                Submit
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ForgotAdminPasscodeModal({ onClose, onSuccess }) {
+  const [recoveryKey, setRecoveryKey] = useState("");
+  const [newPasscode, setNewPasscode] = useState("");
+  const [confirmPasscode, setConfirmPasscode] = useState("");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    setError("");
+    const enteredRecoveryHash = await hashPassword(recoveryKey);
+    if (enteredRecoveryHash !== ADMIN_RECOVERY_HASH) {
+      setError("Galat recovery key");
+      return;
+    }
+    if (!newPasscode.trim() || newPasscode.length < 6) {
+      setError("Passcode kam se kam 6 characters ka ho");
+      return;
+    }
+    if (newPasscode !== confirmPasscode) {
+      setError("Passcode match nahi ho raha");
+      return;
+    }
+    setSaving(true);
+    const newHash = await hashPassword(newPasscode);
+    await saveKey("ez_admin_passcode", newHash);
+    setSaving(false);
+    onSuccess(newHash);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white w-full max-w-sm rounded-2xl p-6 text-center">
+        <h3 className="font-display font-bold text-lg text-[#1B1F3B]">Reset Admin Passcode</h3>
+        <p className="text-xs text-[#6E7482] mt-1 mb-4">Recovery Key daalo naya passcode set karne ke liye.</p>
+        <div className="space-y-3 text-left">
+          <input type="password" value={recoveryKey} onChange={(e) => setRecoveryKey(e.target.value)} placeholder="Recovery Key" className="w-full border border-[#D8D5CC] rounded-lg px-3 py-2.5 text-sm" />
+          <input type="password" value={newPasscode} onChange={(e) => setNewPasscode(e.target.value)} placeholder="New Passcode" className="w-full border border-[#D8D5CC] rounded-lg px-3 py-2.5 text-sm" />
+          <input type="password" value={confirmPasscode} onChange={(e) => setConfirmPasscode(e.target.value)} placeholder="Confirm New Passcode" className="w-full border border-[#D8D5CC] rounded-lg px-3 py-2.5 text-sm" />
+        </div>
+        {error && <div className="flex items-center gap-1.5 text-red-600 text-xs mt-3"><AlertCircle size={14} /> {error}</div>}
+        <div className="flex gap-2 mt-5">
+          <button onClick={onClose} className="flex-1 border border-[#D8D5CC] rounded-xl py-2.5 text-sm font-medium">Cancel</button>
+          <button onClick={submit} disabled={saving} className="flex-1 rounded-xl py-2.5 text-sm font-medium text-white flex items-center justify-center gap-1.5" style={{ backgroundColor: "#D4AF37", color: "#1B1F3B" }}>
+            {saving ? <Loader2 size={14} className="animate-spin" /> : null}
+            Reset
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ==================================================================== */
+/* DASHBOARD TAB                                                        */
+/* ==================================================================== */
 function DashboardTab({ currentUser, users, orders, income, isAdmin }) {
   const teamSize = useMemo(
     () => (currentUser ? getSubtreeIds(users, currentUser.id).length - 1 : 0),
@@ -654,6 +875,9 @@ function IncomeBreakdown({ entry }) {
   );
 }
 
+/* ==================================================================== */
+/* PRODUCTS TAB                                                         */
+/* ==================================================================== */
 function ProductsTab({ products, setProducts, isAdmin }) {
   const [showAdd, setShowAdd] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -1446,7 +1670,10 @@ function CredentialsModal({ result, onClose }) {
   );
 }
 
-function OrdersTab({ users, setUsers, orders, setOrders, payment, setPayment, products, currentUser, isAdmin }) {
+/* ==================================================================== */
+/* ORDERS TAB                                                           */
+/* ==================================================================== */
+function OrdersTab({ users, setUsers, orders, setOrders, payment, setPayment, products, currentUser, isAdmin, passwordRequests, onApprovePassword, onRejectPassword }) {
   const [cart, setCart] = useState({});
   const [placing, setPlacing] = useState(false);
   const [placed, setPlaced] = useState(false);
@@ -1524,6 +1751,27 @@ function OrdersTab({ users, setUsers, orders, setOrders, payment, setPayment, pr
     return (
       <div>
         <h2 className="font-display font-bold text-xl text-[#1B1F3B] mb-4">Orders — Admin</h2>
+
+        {passwordRequests && passwordRequests.length > 0 && (
+          <div className="bg-white rounded-2xl border border-[#E5E3DC] p-4 mb-5">
+            <h3 className="font-display font-semibold text-sm text-[#1B1F3B] mb-3">Password Reset Requests ({passwordRequests.length})</h3>
+            <div className="space-y-2">
+              {passwordRequests.map((r) => (
+                <div key={r.userId} className="flex items-center justify-between bg-[#FAF9F6] rounded-lg px-3 py-2">
+                  <span className="font-mono-tag text-xs text-[#1B1F3B]">{r.userId}</span>
+                  <div className="flex gap-2">
+                    <button onClick={() => onApprovePassword(r.userId)} className="text-xs font-medium px-3 py-1.5 rounded-lg text-white" style={{ backgroundColor: "#0F9B8E" }}>
+                      Approve
+                    </button>
+                    <button onClick={() => onRejectPassword(r.userId)} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-[#D8D5CC]">
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="bg-white rounded-2xl border border-[#E5E3DC] p-4 mb-5">
           <h3 className="font-display font-semibold text-sm text-[#1B1F3B] mb-3">Payment Settings (visible to distributors)</h3>
@@ -1647,6 +1895,9 @@ function OrdersTab({ users, setUsers, orders, setOrders, payment, setPayment, pr
   );
 }
 
+/* ==================================================================== */
+/* INCOME TAB                                                           */
+/* ==================================================================== */
 function IncomeTab({ users, orders, setOrders, income, setIncome, currentUser, isAdmin }) {
   const [running, setRunning] = useState(false);
   const [lastRun, setLastRun] = useState(null);
