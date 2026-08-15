@@ -493,7 +493,7 @@ export default function EverzonDashboard() {
             onClick={() => { setPortalMode(null); setLoginError(""); }}
             className="text-xs text-[#6E7482] underline mb-3 block"
           >
-            â† Back
+            â†  Back
           </button>
           <input
             value={loginInput}
@@ -549,7 +549,7 @@ export default function EverzonDashboard() {
             onClick={() => { setPortalMode(null); setAdminError(""); }}
             className="text-xs text-[#6E7482] underline mb-3 block"
           >
-            â† Back
+            â†  Back
           </button>
           <input
             type="password"
