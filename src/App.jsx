@@ -258,7 +258,14 @@ export default function EverzonDashboard() {
           subscribeKey(
             "ez_users",
             async (val) => {
-              if (val.length === 0 && !seededUsers) {
+              // Repair path: some deployments ended up with users in the DB but no
+              // "root" record (e.g. an interrupted seed, or a manual data edit).
+              // Without a root, the Genealogy tree has nothing to anchor on and
+              // renders blank even though other users exist. If that happens, add
+              // the root back â€” existing members whose parentId already points at
+              // EVZ1000 will automatically reconnect to it.
+              const hasRoot = val.some((u) => u.position === "root");
+              if (!hasRoot && !seededUsers) {
                 seededUsers = true;
                 const root = {
                   id: "EVZ1000",
@@ -272,6 +279,10 @@ export default function EverzonDashboard() {
                   joinDate: new Date().toISOString(),
                   status: "active",
                 };
+                if (val.length > 0) {
+                  await saveKey("ez_users", [root, ...val]);
+                  return;
+                }
                 const demoMember = {
                   id: "EVZ1001",
                   name: "Demo Distributor",
@@ -542,7 +553,7 @@ export default function EverzonDashboard() {
             onClick={() => { setPortalMode(null); setLoginError(""); }}
             className="text-xs text-[#6E7482] underline mb-3 block"
           >
-            â†  Back
+            â† Back
           </button>
           <input
             value={loginInput}
@@ -598,7 +609,7 @@ export default function EverzonDashboard() {
             onClick={() => { setPortalMode(null); setAdminError(""); }}
             className="text-xs text-[#6E7482] underline mb-3 block"
           >
-            â†  Back
+            â† Back
           </button>
           <input
             type="password"
