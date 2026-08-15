@@ -53,8 +53,8 @@ function getRankByName(name) {
 }
 const ADMIN_CHARGE_PCT = 0.05;
 
-const ADMIN_PASSCODE_HASH = "d6406da48b892cc57a7ccff6234dad662143a4ab9f8bd31e79ce47f4d98b7a37";
-const ADMIN_RECOVERY_HASH = "d94e1f0127359067b746c4559ed92b5ec4926e4f7369e751e349fece1e6c4a9e";
+const ADMIN_PASSCODE_HASH = "8aea344e50c3957ab9ec037bb1cf4f7b32ed053a55e88e67b5353853d3883d79";
+const ADMIN_RECOVERY_HASH = "eb96471a7a9bd73bd49919cc02228e6d7902d52b5f0e69573748fb9648811003";
 
 async function hashPassword(plain) {
   const enc = new TextEncoder().encode(plain);
@@ -80,7 +80,6 @@ function ensureFirebaseAuth() {
     authReadyPromise = signInAnonymously(auth).catch((e) => {
       console.error("Firebase anonymous sign-in failed", e);
       authReadyPromise = null;
-      throw e; // rethrow so callers can surface a real error instead of hanging forever
     });
   }
   return authReadyPromise;
@@ -100,10 +99,8 @@ async function saveKey(key, value) {
   try {
     await ensureFirebaseAuth();
     await setDoc(doc(db, "everzon_data", key), { value: JSON.stringify(value) });
-    return null;
   } catch (e) {
     console.error("Firestore save failed", key, e);
-    return e;
   }
 }
 // Real-time listener: keeps every connected device (member phones, admin browser)
@@ -126,6 +123,10 @@ function subscribeKey(key, onValue, fallback, onError) {
     },
     (err) => {
       console.error("Firestore listen failed", key, err);
+      // IMPORTANT: always resolve the caller with the fallback even on error â€”
+      // otherwise a permission/network failure leaves the app's "loading" state
+      // stuck forever with no way out (the bug that caused the endless spinner).
+      onValue(fallback);
       if (onError) onError(err);
     }
   );
@@ -199,7 +200,7 @@ function Logo({ size = 34 }) {
 
 export default function EverzonDashboard() {
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState("");
+  const [loadError, setLoadError] = useState(false);
   const [users, setUsers] = useState([]);
   const [orders, setOrders] = useState([]);
   const [income, setIncome] = useState([]);
@@ -222,6 +223,8 @@ export default function EverzonDashboard() {
   const [portalMode, setPortalMode] = useState(null);
   const [showForgotMember, setShowForgotMember] = useState(false);
   const [showForgotAdmin, setShowForgotAdmin] = useState(false);
+  const [showPublicJoin, setShowPublicJoin] = useState(false);
+  const [publicJoinResult, setPublicJoinResult] = useState(null);
 
   // Live sync: every key below is subscribed with onSnapshot, so a change made on
   // ANY device (member's phone, admin's laptop, etc.) reaches every other open
@@ -233,25 +236,18 @@ export default function EverzonDashboard() {
     let seededUsers = false;
     let unsubs = [];
 
-    // Safety net: if nothing has resolved (success OR error) within 10s, stop
-    // showing a bare spinner and tell the user something is actually wrong,
-    // instead of hanging forever with no explanation.
-    const timeoutId = setTimeout(() => {
+    // Safety net: if nothing has resolved within 12 seconds (bad network, wrong
+    // Firebase config, Firestore rules blocking access, etc.), stop spinning
+    // forever and show a clear "couldn't connect" screen with a Retry button
+    // instead of an endless loading circle.
+    const hardTimeout = setTimeout(() => {
       if (active) {
-        setLoadError(
-          (prev) =>
-            prev ||
-            "Still connecting after 10 seconds. This usually means: (1) Anonymous sign-in is not enabled in the Firebase Console (Authentication â†’ Sign-in method), or (2) Firestore security rules are blocking reads. Open the browser console (F12) for the exact error."
-        );
+        setLoading((prevLoading) => {
+          if (prevLoading) setLoadError(true);
+          return false;
+        });
       }
-    }, 10000);
-
-    const onUsersError = (err) => {
-      if (!active) return;
-      clearTimeout(timeoutId);
-      setLoadError(`Could not load data from Firestore: ${err?.code || err?.message || "unknown error"}.`);
-      setLoading(false);
-    };
+    }, 12000);
 
     ensureFirebaseAuth()
       .then(() => {
@@ -260,14 +256,7 @@ export default function EverzonDashboard() {
           subscribeKey(
             "ez_users",
             async (val) => {
-              // Repair path: some deployments ended up with users in the DB but no
-              // "root" record (e.g. an interrupted seed, or a manual data edit).
-              // Without a root, the Genealogy tree has nothing to anchor on and
-              // renders blank even though other users exist. If that happens, add
-              // the root back â€” existing members whose parentId already points at
-              // EVZ1000 will automatically reconnect to it.
-              const hasRoot = val.some((u) => u.position === "root");
-              if (!hasRoot && !seededUsers) {
+              if (val.length === 0 && !seededUsers) {
                 seededUsers = true;
                 const root = {
                   id: "EVZ1000",
@@ -281,24 +270,37 @@ export default function EverzonDashboard() {
                   joinDate: new Date().toISOString(),
                   status: "active",
                 };
-                const saveErr = await saveKey("ez_users", val.length > 0 ? [root, ...val] : [root]);
-                if (saveErr) {
-                  // Surface the real Firestore error on screen instead of failing silently
-                  // forever â€” this is almost always a security-rules permission issue.
-                  clearTimeout(timeoutId);
-                  setLoadError(
-                    `Could not create the root ID in Firestore: ${saveErr.code || saveErr.message || "unknown error"}. This means Firestore security rules are blocking writes â€” open Firebase Console â†’ Firestore Database â†’ Rules and allow writes for authenticated users on the "everzon_data" collection.`
-                  );
-                  setLoading(false);
-                }
+                const demoMember = {
+                  id: "EVZ1001",
+                  name: "Demo Distributor",
+                  email: "demo@everzon.example",
+                  mobile: "9999999999",
+                  sponsorId: "EVZ1000",
+                  parentId: "EVZ1000",
+                  position: "left",
+                  password: await hashPassword("demo1234"),
+                  joinDate: new Date().toISOString(),
+                  status: "active",
+                };
+                await saveKey("ez_users", [root, demoMember]);
+                // Always clear the loading state here too â€” if this write silently
+                // failed (e.g. permission denied), the snapshot won't fire again,
+                // so we must not leave the app stuck waiting on it.
+                if (active) setLoading(false);
                 return;
               }
               setUsers(val);
               setLoading(false);
-              clearTimeout(timeoutId);
             },
             [],
-            onUsersError
+            () => {
+              // A real connection/permission error on the core "users" data â€”
+              // surface it immediately instead of waiting for the hard timeout.
+              if (active) {
+                setLoadError(true);
+                setLoading(false);
+              }
+            }
           )
         );
         unsubs.push(subscribeKey("ez_orders", setOrders, []));
@@ -310,18 +312,19 @@ export default function EverzonDashboard() {
         unsubs.push(subscribeKey("ez_carry", setCarry, {}));
         unsubs.push(subscribeKey("ez_cumulative_bv", setCumulativeBV, {}));
       })
-      .catch((err) => {
-        if (!active) return;
-        clearTimeout(timeoutId);
-        setLoadError(
-          `Firebase sign-in failed: ${err?.code || err?.message || "unknown error"}. Go to Firebase Console â†’ Authentication â†’ Sign-in method, and make sure "Anonymous" is enabled.`
-        );
-        setLoading(false);
+      .catch(() => {
+        // ensureFirebaseAuth is designed to swallow its own errors, but just in
+        // case anything else throws before subscriptions are set up, never leave
+        // the screen stuck on the spinner.
+        if (active) {
+          setLoadError(true);
+          setLoading(false);
+        }
       });
 
     return () => {
       active = false;
-      clearTimeout(timeoutId);
+      clearTimeout(hardTimeout);
       unsubs.forEach((u) => u && u());
     };
   }, []);
@@ -396,24 +399,59 @@ export default function EverzonDashboard() {
     setPasswordRequests([]);
   };
 
+  // Self-serve recovery: if the HQ (root) ID is missing â€” usually because the
+  // automatic first-time setup silently failed (e.g. a Firestore write was
+  // blocked) â€” the tree has nothing to display and looks empty forever.
+  // This lets the admin recreate the HQ ID directly from the app, without
+  // needing direct database access.
+  const [initializingRoot, setInitializingRoot] = useState(false);
+  const initializeRoot = async () => {
+    if (users.some((u) => u.position === "root")) return;
+    setInitializingRoot(true);
+    const root = {
+      id: "EVZ1000",
+      name: "Everzon HQ",
+      email: "hq@everzon.example",
+      mobile: "-",
+      sponsorId: null,
+      parentId: null,
+      position: "root",
+      password: await hashPassword("Ravi@4545"),
+      joinDate: new Date().toISOString(),
+      status: "active",
+    };
+    const updated = [...users, root];
+    await saveKey("ez_users", updated);
+    setUsers(updated);
+    setInitializingRoot(false);
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#FAF9F6] px-6 text-center">
-        {loadError ? (
-          <>
-            <AlertCircle className="text-[#B3532F] mb-3" size={32} />
-            <p className="text-sm text-[#1B1F3B] font-medium mb-1">Could not connect</p>
-            <p className="text-xs text-[#6E7482] max-w-sm mb-4">{loadError}</p>
-            <button
-              onClick={() => window.location.reload()}
-              className="bg-[#1B1F3B] text-white text-sm font-medium px-4 py-2 rounded-xl"
-            >
-              Retry
-            </button>
-          </>
-        ) : (
-          <Loader2 className="animate-spin text-[#0F9B8E]" size={28} />
-        )}
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#FAF9F6] gap-3">
+        <Loader2 className="animate-spin text-[#0F9B8E]" size={28} />
+        <span className="text-xs text-[#9298A6]">Connectingâ€¦</span>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#FAF9F6] px-6 text-center gap-3">
+        <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ backgroundColor: "#FCEEE9" }}>
+          <AlertCircle size={26} className="text-[#B3532F]" />
+        </div>
+        <h2 className="font-display font-bold text-lg text-[#1B1F3B]">Couldn't Connect</h2>
+        <p className="text-xs text-[#6E7482] max-w-xs">
+          Everzon couldn't reach the server. Please check your internet connection and try again.
+        </p>
+        <button
+          onClick={() => window.location.reload()}
+          className="text-sm font-medium rounded-xl px-5 py-2.5 text-white mt-2"
+          style={{ backgroundColor: "#1B1F3B" }}
+        >
+          Retry
+        </button>
       </div>
     );
   }
@@ -539,6 +577,14 @@ export default function EverzonDashboard() {
               <span className="font-display font-semibold text-sm text-[#1B1F3B]">Admin</span>
             </button>
           </div>
+
+          <button
+            onClick={() => setShowPublicJoin(true)}
+            className="w-full flex items-center justify-center gap-2 text-sm font-medium rounded-xl py-3 mt-5 border-2 border-dashed"
+            style={{ borderColor: "#0F9B8E", color: "#0F9B8E" }}
+          >
+            <UserPlus size={16} /> New Distributor? Create Your Joining ID
+          </button>
         </div>
       )}
 
@@ -594,6 +640,13 @@ export default function EverzonDashboard() {
             className="text-xs text-[#0F9B8E] underline mt-3 block mx-auto"
           >
             Forgot Password?
+          </button>
+          <button
+            onClick={() => setShowPublicJoin(true)}
+            className="w-full flex items-center justify-center gap-2 text-sm font-medium rounded-xl py-3 mt-4 border-2 border-dashed"
+            style={{ borderColor: "#0F9B8E", color: "#0F9B8E" }}
+          >
+            <UserPlus size={16} /> New Distributor? Create Your Joining ID
           </button>
         </div>
       )}
@@ -667,6 +720,8 @@ export default function EverzonDashboard() {
                 currentUser={currentUser}
                 isAdmin={isAdmin}
                 cumulativeBV={cumulativeBV}
+                onInitializeRoot={initializeRoot}
+                initializingRoot={initializingRoot}
               />
             )}
             {tab === "orders" && (
@@ -752,6 +807,20 @@ export default function EverzonDashboard() {
             setShowForgotAdmin(false);
           }}
         />
+      )}
+      {showPublicJoin && (
+        <PublicJoinModal
+          users={users}
+          setUsers={setUsers}
+          onClose={() => setShowPublicJoin(false)}
+          onSuccess={(res) => {
+            setShowPublicJoin(false);
+            setPublicJoinResult(res);
+          }}
+        />
+      )}
+      {publicJoinResult && (
+        <CredentialsModal result={publicJoinResult} onClose={() => setPublicJoinResult(null)} />
       )}
     </div>
   );
@@ -897,6 +966,213 @@ function ForgotAdminPasscodeModal({ onClose, onSuccess }) {
   );
 }
 
+// Public self-registration â€” usable WITHOUT logging in, so a brand new
+// distributor (or the person recruiting them) can create a joining ID
+// directly from the login screen. Unlike the in-tree "+" join flow, both the
+// sponsor AND the exact placement slot (parent ID + Left/Right) must be
+// typed in here, since there's no logged-in team context to infer them from.
+function PublicJoinModal({ users, setUsers, onClose, onSuccess }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [mobile, setMobile] = useState("");
+  const [sponsorId, setSponsorId] = useState("");
+  const [placementId, setPlacementId] = useState("");
+  const [position, setPosition] = useState("left");
+  const [customId, setCustomId] = useState("");
+  const [customPassword, setCustomPassword] = useState("");
+  const [aadharNumber, setAadharNumber] = useState("");
+  const [panNumber, setPanNumber] = useState("");
+  const [bankAccountName, setBankAccountName] = useState("");
+  const [bankAccountNumber, setBankAccountNumber] = useState("");
+  const [bankIfsc, setBankIfsc] = useState("");
+  const [bankName, setBankName] = useState("");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    setError("");
+    if (!name.trim() || !email.trim() || !mobile.trim() || !sponsorId.trim() || !placementId.trim()) {
+      setError("Name, email, mobile, Sponsor ID and Placement ID are all required");
+      return;
+    }
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      setError("Please enter a valid email ID");
+      return;
+    }
+    const sponsor = findUser(users, sponsorId.trim().toUpperCase());
+    if (!sponsor) {
+      setError("Sponsor ID not found");
+      return;
+    }
+    const parent = findUser(users, placementId.trim().toUpperCase());
+    if (!parent) {
+      setError("Placement ID not found");
+      return;
+    }
+    const occupied = getChildren(users, parent.id).find((c) => c.position === position);
+    if (occupied) {
+      setError(`The ${position.toUpperCase()} slot under ${parent.id} is already filled by ${occupied.id}`);
+      return;
+    }
+    let newId = customId.trim().toUpperCase();
+    if (newId) {
+      if (findUser(users, newId)) {
+        setError("This ID already exists, please choose another ID");
+        return;
+      }
+    } else {
+      newId = genId(users);
+    }
+    const newPassword = customPassword.trim() || genPassword();
+    const passwordHash = await hashPassword(newPassword);
+    setSaving(true);
+    const newUser = {
+      id: newId,
+      name: name.trim(),
+      email: email.trim(),
+      mobile: mobile.trim(),
+      sponsorId: sponsor.id,
+      parentId: parent.id,
+      position,
+      password: passwordHash,
+      joinDate: new Date().toISOString(),
+      status: "inactive",
+      kyc: {
+        aadharNumber: aadharNumber.trim(),
+        panNumber: panNumber.trim().toUpperCase(),
+        bankAccountName: bankAccountName.trim(),
+        bankAccountNumber: bankAccountNumber.trim(),
+        bankIfsc: bankIfsc.trim().toUpperCase(),
+        bankName: bankName.trim(),
+      },
+    };
+    const updated = [...users, newUser];
+    await saveKey("ez_users", updated);
+    setUsers(updated);
+
+    loadKey("ez_mailbox", []).then((mailbox) => {
+      mailbox.push({
+        to: newUser.email,
+        subject: "Welcome to Everzon â€” Your Distributor ID",
+        body: `ID: ${newId}, Password: ${newPassword}`,
+        sentAt: new Date().toISOString(),
+      });
+      saveKey("ez_mailbox", mailbox);
+    });
+
+    setSaving(false);
+    onSuccess({ id: newId, password: newPassword, name: newUser.name, email: newUser.email });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+      <div className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl max-h-[85vh] max-h-[85dvh] flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-[#E5E3DC] shrink-0">
+          <div>
+            <h3 className="font-display font-bold text-lg text-[#1B1F3B]">Create Your Joining ID</h3>
+            <p className="text-[11px] text-[#6E7482] mt-0.5">No login needed â€” fill this in to register.</p>
+          </div>
+          <button onClick={onClose}><X size={20} /></button>
+        </div>
+
+        <div
+          className="flex-1 overflow-y-auto px-5 pt-4"
+          style={{ WebkitOverflowScrolling: "touch", overscrollBehavior: "contain", touchAction: "pan-y" }}
+        >
+          <div className="space-y-3">
+            <Field label="Full Name"><input value={name} onChange={(e) => setName(e.target.value)} className="in" /></Field>
+            <Field label="Email ID"><input value={email} onChange={(e) => setEmail(e.target.value)} className="in" type="email" /></Field>
+            <Field label="Mobile Number"><input value={mobile} onChange={(e) => setMobile(e.target.value)} className="in" /></Field>
+            <Field label="Sponsor ID (who referred you)">
+              <input
+                value={sponsorId}
+                onChange={(e) => setSponsorId(e.target.value.toUpperCase())}
+                className="in font-mono-tag"
+                placeholder="e.g. EVZ1000"
+              />
+            </Field>
+            <Field label="Placement ID (whose team you'll join)">
+              <input
+                value={placementId}
+                onChange={(e) => setPlacementId(e.target.value.toUpperCase())}
+                className="in font-mono-tag"
+                placeholder="e.g. EVZ1000 (often same as Sponsor ID)"
+              />
+            </Field>
+            <Field label="Position (Left / Right)">
+              <select value={position} onChange={(e) => setPosition(e.target.value)} className="in">
+                <option value="left">Left</option>
+                <option value="right">Right</option>
+              </select>
+            </Field>
+            <Field label="Custom ID (optional)">
+              <input
+                value={customId}
+                onChange={(e) => setCustomId(e.target.value.toUpperCase())}
+                className="in font-mono-tag"
+                placeholder="Leave blank to auto-generate"
+              />
+            </Field>
+            <Field label="Custom Password (optional)">
+              <input
+                value={customPassword}
+                onChange={(e) => setCustomPassword(e.target.value)}
+                className="in font-mono-tag"
+                placeholder="Leave blank to auto-generate"
+              />
+            </Field>
+          </div>
+
+          <div className="mt-5 pt-4 border-t border-[#E5E3DC]">
+            <h4 className="font-display font-semibold text-sm text-[#1B1F3B] mb-1">KYC Details (optional)</h4>
+            <p className="text-[11px] text-[#6E7482] mb-3">Aadhar, PAN and bank details can also be added later</p>
+            <div className="space-y-3">
+              <Field label="Aadhar Number">
+                <input value={aadharNumber} onChange={(e) => setAadharNumber(e.target.value)} className="in font-mono-tag" placeholder="XXXX XXXX XXXX" maxLength={14} />
+              </Field>
+              <Field label="PAN Number">
+                <input value={panNumber} onChange={(e) => setPanNumber(e.target.value.toUpperCase())} className="in font-mono-tag" placeholder="ABCDE1234F" maxLength={10} />
+              </Field>
+              <Field label="Bank Account Holder Name">
+                <input value={bankAccountName} onChange={(e) => setBankAccountName(e.target.value)} className="in" />
+              </Field>
+              <Field label="Bank Account Number">
+                <input value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value)} className="in font-mono-tag" />
+              </Field>
+              <Field label="IFSC Code">
+                <input value={bankIfsc} onChange={(e) => setBankIfsc(e.target.value.toUpperCase())} className="in font-mono-tag" placeholder="e.g. SBIN0001234" />
+              </Field>
+              <Field label="Bank Name">
+                <input value={bankName} onChange={(e) => setBankName(e.target.value)} className="in" />
+              </Field>
+            </div>
+          </div>
+
+          {error && (
+            <div className="flex items-center gap-1.5 text-red-600 text-xs mt-3">
+              <AlertCircle size={14} /> {error}
+            </div>
+          )}
+          <div className="h-2" />
+        </div>
+
+        <div className="px-5 py-4 border-t border-[#E5E3DC] shrink-0">
+          <button
+            onClick={submit}
+            disabled={saving}
+            className="w-full bg-[#1B1F3B] text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2"
+          >
+            {saving ? <Loader2 size={16} className="animate-spin" /> : null}
+            Create Joining ID
+          </button>
+        </div>
+
+        <style>{`.in { width:100%; border:1px solid #D8D5CC; border-radius:8px; padding:8px 10px; font-size:14px; }`}</style>
+      </div>
+    </div>
+  );
+}
+
 /* ==================================================================== */
 /* DASHBOARD TAB                                                        */
 /* ==================================================================== */
@@ -995,7 +1271,7 @@ function DashboardTab({ currentUser, users, orders, income, isAdmin, carry, cumu
 
       {isAdmin && (
         <div className="grid grid-cols-2 gap-4">
-          <StatCard label="Total Distributors" value={users.length - 1} color={INDIGO} />
+          <StatCard label="Total Distributors" value={Math.max(0, users.length - 1)} color={INDIGO} />
           <StatCard label="Pending Orders" value={orders.filter((o) => o.status === "pending").length} color="#B3532F" />
           <StatCard label="Active IDs" value={users.filter((u) => u.status === "active").length} color={TEAL} />
           <StatCard label="Total Orders" value={orders.length} color={GOLD} />
@@ -1391,7 +1667,7 @@ function AddProductModal({ products, onClose, onSave }) {
   );
 }
 
-function GenealogyTab({ users, setUsers, currentUser, isAdmin, cumulativeBV }) {
+function GenealogyTab({ users, setUsers, currentUser, isAdmin, cumulativeBV, onInitializeRoot, initializingRoot }) {
   const [joinSlot, setJoinSlot] = useState(null);
   const [result, setResult] = useState(null);
   const [blockedMsg, setBlockedMsg] = useState("");
@@ -1451,6 +1727,15 @@ function GenealogyTab({ users, setUsers, currentUser, isAdmin, cumulativeBV }) {
     await saveKey("ez_users", updated);
     setUsers(updated);
     setManageUser((prev) => (prev && prev.id === userId ? { ...prev, kyc: { ...prev.kyc, ...kycUpdates } } : prev));
+  };
+
+  // Admin-only: set/reset any ID's password immediately, without going through
+  // the member-submitted request + approval flow. Useful for HQ/root and for
+  // fixing an ID whose password was never set correctly.
+  const setUserPassword = async (userId, newPasswordHash) => {
+    const updated = users.map((u) => (u.id === userId ? { ...u, password: newPasswordHash } : u));
+    await saveKey("ez_users", updated);
+    setUsers(updated);
   };
 
   // Admin-only: permanently delete a distributor ID. Only allowed when the ID has no
@@ -1537,7 +1822,7 @@ function GenealogyTab({ users, setUsers, currentUser, isAdmin, cumulativeBV }) {
 
       <div className="overflow-x-auto pb-4">
         <div className="min-w-max flex justify-center">
-          {displayRootId && (
+          {displayRootId ? (
             <TreeNode
               users={users}
               nodeId={displayRootId}
@@ -1547,6 +1832,29 @@ function GenealogyTab({ users, setUsers, currentUser, isAdmin, cumulativeBV }) {
               cumulativeBV={cumulativeBV}
               onNodeClick={isAdmin ? (node) => setManageUser(node) : undefined}
             />
+          ) : (
+            <div className="w-full max-w-sm bg-white border border-[#E5E3DC] rounded-2xl p-6 text-center mx-auto">
+              <div className="w-12 h-12 rounded-xl mx-auto flex items-center justify-center" style={{ backgroundColor: "#FCEEE9" }}>
+                <AlertCircle size={22} className="text-[#B3532F]" />
+              </div>
+              <h3 className="font-display font-bold text-base text-[#1B1F3B] mt-3">No HQ ID Found</h3>
+              <p className="text-xs text-[#6E7482] mt-1">
+                {isAdmin
+                  ? "The tree is empty because there's no root (HQ) ID set up yet. This can happen if the first-time setup didn't complete. Create it now to start building your tree."
+                  : "The distributor tree hasn't been set up yet. Please check back later or contact your admin."}
+              </p>
+              {isAdmin && (
+                <button
+                  onClick={onInitializeRoot}
+                  disabled={initializingRoot}
+                  className="mt-4 flex items-center justify-center gap-2 mx-auto text-sm font-medium rounded-xl px-5 py-2.5 text-white disabled:opacity-50"
+                  style={{ backgroundColor: "#1B1F3B" }}
+                >
+                  {initializingRoot ? <Loader2 size={15} className="animate-spin" /> : null}
+                  Initialize HQ ID (EVZ1000)
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -1581,6 +1889,7 @@ function GenealogyTab({ users, setUsers, currentUser, isAdmin, cumulativeBV }) {
           onSaveKyc={saveKyc}
           onDelete={() => deleteUser(manageUser.id)}
           onMove={() => setMoveTarget(manageUser)}
+          onSetPassword={(newHash) => setUserPassword(manageUser.id, newHash)}
         />
       )}
 
@@ -1596,12 +1905,36 @@ function GenealogyTab({ users, setUsers, currentUser, isAdmin, cumulativeBV }) {
   );
 }
 
-function ManageUserModal({ user, users, isAdmin, deleteError, cumulativeBV, onClose, onHold, onUnhold, onSaveKyc, onDelete, onMove }) {
+function ManageUserModal({ user, users, isAdmin, deleteError, cumulativeBV, onClose, onHold, onUnhold, onSaveKyc, onDelete, onMove, onSetPassword }) {
   const isHeld = user.status === "hold";
   const isRoot = user.position === "root";
   const hasChildren = users ? getChildren(users, user.id).length > 0 : false;
   const rank = isRoot ? null : getRank(cumulativeBV?.[user.id] || 0);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [settingPassword, setSettingPassword] = useState(false);
+  const [newPass, setNewPass] = useState("");
+  const [confirmPass, setConfirmPass] = useState("");
+  const [passError, setPassError] = useState("");
+  const [passSaving, setPassSaving] = useState(false);
+  const [passSuccess, setPassSuccess] = useState(false);
+  const submitPassword = async () => {
+    setPassError("");
+    if (!newPass.trim() || newPass.length < 6) {
+      setPassError("Password must be at least 6 characters");
+      return;
+    }
+    if (newPass !== confirmPass) {
+      setPassError("Passwords do not match");
+      return;
+    }
+    setPassSaving(true);
+    const hash = await hashPassword(newPass);
+    await onSetPassword(hash);
+    setPassSaving(false);
+    setPassSuccess(true);
+    setNewPass("");
+    setConfirmPass("");
+  };
   const kyc = user.kyc || {};
   const hasKyc = kyc.aadharNumber || kyc.panNumber || kyc.bankAccountNumber;
   const [editing, setEditing] = useState(false);
@@ -1729,34 +2062,90 @@ function ManageUserModal({ user, users, isAdmin, deleteError, cumulativeBV, onCl
         )}
 
         {isRoot ? (
-          <p className="text-xs text-[#6E7482] mt-4">The HQ ID cannot be put on hold, moved, or deleted.</p>
+          <p className="text-xs text-[#6E7482] mt-4">The HQ ID cannot be put on hold, moved, or deleted â€” but its password can still be set below.</p>
         ) : (
-          <>
-            <div className="flex gap-2 mt-5">
-              <button onClick={onClose} className="flex-1 border border-[#D8D5CC] rounded-xl py-2.5 text-sm font-medium">
-                Cancel
+          <div className="flex gap-2 mt-5">
+            <button onClick={onClose} className="flex-1 border border-[#D8D5CC] rounded-xl py-2.5 text-sm font-medium">
+              Cancel
+            </button>
+            {isHeld ? (
+              <button onClick={onUnhold} className="flex-1 rounded-xl py-2.5 text-sm font-medium text-white" style={{ backgroundColor: "#0F9B8E" }}>
+                Unhold
               </button>
-              {isHeld ? (
-                <button onClick={onUnhold} className="flex-1 rounded-xl py-2.5 text-sm font-medium text-white" style={{ backgroundColor: "#0F9B8E" }}>
-                  Unhold
-                </button>
-              ) : (
-                <button onClick={onHold} className="flex-1 rounded-xl py-2.5 text-sm font-medium text-white" style={{ backgroundColor: "#B3532F" }}>
-                  Hold ID
-                </button>
-              )}
-            </div>
+            ) : (
+              <button onClick={onHold} className="flex-1 rounded-xl py-2.5 text-sm font-medium text-white" style={{ backgroundColor: "#B3532F" }}>
+                Hold ID
+              </button>
+            )}
+          </div>
+        )}
 
-            {isAdmin && (
-              <div className="mt-3 pt-3 border-t border-[#E5E3DC] text-left">
-                <h4 className="font-display font-semibold text-xs text-[#1B1F3B] mb-2 text-center">Admin Actions</h4>
-                <button
-                  onClick={onMove}
-                  className="w-full flex items-center justify-center gap-1.5 text-xs font-medium rounded-lg py-2.5 border border-[#7C3AED] text-[#7C3AED] mb-2"
-                >
-                  <GitBranch size={13} /> Move Team to Another Slot
-                </button>
+        {isAdmin && (
+          <div className="mt-3 pt-3 border-t border-[#E5E3DC] text-left">
+            <h4 className="font-display font-semibold text-xs text-[#1B1F3B] mb-2 text-center">Admin Actions</h4>
 
+            {!isRoot && (
+              <button
+                onClick={onMove}
+                className="w-full flex items-center justify-center gap-1.5 text-xs font-medium rounded-lg py-2.5 border border-[#7C3AED] text-[#7C3AED] mb-2"
+              >
+                <GitBranch size={13} /> Move Team to Another Slot
+              </button>
+            )}
+
+            {!settingPassword ? (
+              <button
+                onClick={() => { setSettingPassword(true); setPassSuccess(false); }}
+                className="w-full flex items-center justify-center gap-1.5 text-xs font-medium rounded-lg py-2.5 border border-[#0F9B8E] text-[#0F9B8E] mb-2"
+              >
+                <ShieldCheck size={13} /> Set / Reset Password
+              </button>
+            ) : (
+              <div className="bg-[#EAF4F2] rounded-lg p-3 mb-2 text-left">
+                {passSuccess ? (
+                  <div className="flex items-center gap-1.5 text-xs text-[#0F9B8E]">
+                    <Check size={14} /> Password updated for {user.id}.
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      type="password"
+                      value={newPass}
+                      onChange={(e) => setNewPass(e.target.value)}
+                      placeholder="New password"
+                      className="w-full border border-[#D8D5CC] rounded-lg px-3 py-2 text-xs mb-2"
+                    />
+                    <input
+                      type="password"
+                      value={confirmPass}
+                      onChange={(e) => setConfirmPass(e.target.value)}
+                      placeholder="Confirm password"
+                      className="w-full border border-[#D8D5CC] rounded-lg px-3 py-2 text-xs mb-2"
+                    />
+                    {passError && <p className="text-[11px] text-[#B3532F] mb-2">{passError}</p>}
+                  </>
+                )}
+                <div className="flex gap-2">
+                  <button onClick={() => { setSettingPassword(false); setNewPass(""); setConfirmPass(""); setPassError(""); }} className="flex-1 border border-[#D8D5CC] rounded-lg py-2 text-xs font-medium bg-white">
+                    {passSuccess ? "Close" : "Cancel"}
+                  </button>
+                  {!passSuccess && (
+                    <button
+                      onClick={submitPassword}
+                      disabled={passSaving}
+                      className="flex-1 rounded-lg py-2 text-xs font-medium text-white flex items-center justify-center gap-1.5"
+                      style={{ backgroundColor: "#0F9B8E" }}
+                    >
+                      {passSaving ? <Loader2 size={12} className="animate-spin" /> : null}
+                      Save Password
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {!isRoot && (
+              <>
                 {!confirmingDelete ? (
                   <button
                     onClick={() => setConfirmingDelete(true)}
@@ -1787,9 +2176,9 @@ function ManageUserModal({ user, users, isAdmin, deleteError, cumulativeBV, onCl
                   </div>
                 )}
                 {deleteError && <p className="text-[11px] text-[#B3532F] mt-2">{deleteError}</p>}
-              </div>
+              </>
             )}
-          </>
+          </div>
         )}
       </div>
     </div>
