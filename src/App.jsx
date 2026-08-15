@@ -100,8 +100,10 @@ async function saveKey(key, value) {
   try {
     await ensureFirebaseAuth();
     await setDoc(doc(db, "everzon_data", key), { value: JSON.stringify(value) });
+    return null;
   } catch (e) {
     console.error("Firestore save failed", key, e);
+    return e;
   }
 }
 // Real-time listener: keeps every connected device (member phones, admin browser)
@@ -279,7 +281,16 @@ export default function EverzonDashboard() {
                   joinDate: new Date().toISOString(),
                   status: "active",
                 };
-                await saveKey("ez_users", val.length > 0 ? [root, ...val] : [root]);
+                const saveErr = await saveKey("ez_users", val.length > 0 ? [root, ...val] : [root]);
+                if (saveErr) {
+                  // Surface the real Firestore error on screen instead of failing silently
+                  // forever â€” this is almost always a security-rules permission issue.
+                  clearTimeout(timeoutId);
+                  setLoadError(
+                    `Could not create the root ID in Firestore: ${saveErr.code || saveErr.message || "unknown error"}. This means Firestore security rules are blocking writes â€” open Firebase Console â†’ Firestore Database â†’ Rules and allow writes for authenticated users on the "everzon_data" collection.`
+                  );
+                  setLoading(false);
+                }
                 return;
               }
               setUsers(val);
