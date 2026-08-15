@@ -80,6 +80,7 @@ function ensureFirebaseAuth() {
     authReadyPromise = signInAnonymously(auth).catch((e) => {
       console.error("Firebase anonymous sign-in failed", e);
       authReadyPromise = null;
+      throw e; // rethrow so callers can surface a real error instead of hanging forever
     });
   }
   return authReadyPromise;
@@ -107,7 +108,7 @@ async function saveKey(key, value) {
 // in sync automatically. This replaces the old "load once on page open" approach,
 // which is why a request submitted on one device never used to appear on another
 // until a manual page refresh.
-function subscribeKey(key, onValue, fallback) {
+function subscribeKey(key, onValue, fallback, onError) {
   return onSnapshot(
     doc(db, "everzon_data", key),
     (snap) => {
@@ -123,6 +124,7 @@ function subscribeKey(key, onValue, fallback) {
     },
     (err) => {
       console.error("Firestore listen failed", key, err);
+      if (onError) onError(err);
     }
   );
 }
@@ -195,6 +197,7 @@ function Logo({ size = 34 }) {
 
 export default function EverzonDashboard() {
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [users, setUsers] = useState([]);
   const [orders, setOrders] = useState([]);
   const [income, setIncome] = useState([]);
@@ -228,59 +231,91 @@ export default function EverzonDashboard() {
     let seededUsers = false;
     let unsubs = [];
 
-    ensureFirebaseAuth().then(() => {
+    // Safety net: if nothing has resolved (success OR error) within 10s, stop
+    // showing a bare spinner and tell the user something is actually wrong,
+    // instead of hanging forever with no explanation.
+    const timeoutId = setTimeout(() => {
+      if (active) {
+        setLoadError(
+          (prev) =>
+            prev ||
+            "Still connecting after 10 seconds. This usually means: (1) Anonymous sign-in is not enabled in the Firebase Console (Authentication â†’ Sign-in method), or (2) Firestore security rules are blocking reads. Open the browser console (F12) for the exact error."
+        );
+      }
+    }, 10000);
+
+    const onUsersError = (err) => {
       if (!active) return;
-      unsubs.push(
-        subscribeKey(
-          "ez_users",
-          async (val) => {
-            if (val.length === 0 && !seededUsers) {
-              seededUsers = true;
-              const root = {
-                id: "EVZ1000",
-                name: "Everzon HQ",
-                email: "hq@everzon.example",
-                mobile: "-",
-                sponsorId: null,
-                parentId: null,
-                position: "root",
-                password: "-",
-                joinDate: new Date().toISOString(),
-                status: "active",
-              };
-              const demoMember = {
-                id: "EVZ1001",
-                name: "Demo Distributor",
-                email: "demo@everzon.example",
-                mobile: "9999999999",
-                sponsorId: "EVZ1000",
-                parentId: "EVZ1000",
-                position: "left",
-                password: await hashPassword("demo1234"),
-                joinDate: new Date().toISOString(),
-                status: "active",
-              };
-              await saveKey("ez_users", [root, demoMember]);
-              return;
-            }
-            setUsers(val);
-            setLoading(false);
-          },
-          []
-        )
-      );
-      unsubs.push(subscribeKey("ez_orders", setOrders, []));
-      unsubs.push(subscribeKey("ez_income", setIncome, []));
-      unsubs.push(subscribeKey("ez_payment", setPayment, { upiId: "", accountName: "", accountNumber: "", ifsc: "", qr: "" }));
-      unsubs.push(subscribeKey("ez_products", setProducts, PRODUCTS));
-      unsubs.push(subscribeKey("ez_admin_passcode", setAdminPasscodeHash, ADMIN_PASSCODE_HASH));
-      unsubs.push(subscribeKey("ez_password_requests", setPasswordRequests, []));
-      unsubs.push(subscribeKey("ez_carry", setCarry, {}));
-      unsubs.push(subscribeKey("ez_cumulative_bv", setCumulativeBV, {}));
-    });
+      clearTimeout(timeoutId);
+      setLoadError(`Could not load data from Firestore: ${err?.code || err?.message || "unknown error"}.`);
+      setLoading(false);
+    };
+
+    ensureFirebaseAuth()
+      .then(() => {
+        if (!active) return;
+        unsubs.push(
+          subscribeKey(
+            "ez_users",
+            async (val) => {
+              if (val.length === 0 && !seededUsers) {
+                seededUsers = true;
+                const root = {
+                  id: "EVZ1000",
+                  name: "Everzon HQ",
+                  email: "hq@everzon.example",
+                  mobile: "-",
+                  sponsorId: null,
+                  parentId: null,
+                  position: "root",
+                  password: "-",
+                  joinDate: new Date().toISOString(),
+                  status: "active",
+                };
+                const demoMember = {
+                  id: "EVZ1001",
+                  name: "Demo Distributor",
+                  email: "demo@everzon.example",
+                  mobile: "9999999999",
+                  sponsorId: "EVZ1000",
+                  parentId: "EVZ1000",
+                  position: "left",
+                  password: await hashPassword("demo1234"),
+                  joinDate: new Date().toISOString(),
+                  status: "active",
+                };
+                await saveKey("ez_users", [root, demoMember]);
+                return;
+              }
+              setUsers(val);
+              setLoading(false);
+              clearTimeout(timeoutId);
+            },
+            [],
+            onUsersError
+          )
+        );
+        unsubs.push(subscribeKey("ez_orders", setOrders, []));
+        unsubs.push(subscribeKey("ez_income", setIncome, []));
+        unsubs.push(subscribeKey("ez_payment", setPayment, { upiId: "", accountName: "", accountNumber: "", ifsc: "", qr: "" }));
+        unsubs.push(subscribeKey("ez_products", setProducts, PRODUCTS));
+        unsubs.push(subscribeKey("ez_admin_passcode", setAdminPasscodeHash, ADMIN_PASSCODE_HASH));
+        unsubs.push(subscribeKey("ez_password_requests", setPasswordRequests, []));
+        unsubs.push(subscribeKey("ez_carry", setCarry, {}));
+        unsubs.push(subscribeKey("ez_cumulative_bv", setCumulativeBV, {}));
+      })
+      .catch((err) => {
+        if (!active) return;
+        clearTimeout(timeoutId);
+        setLoadError(
+          `Firebase sign-in failed: ${err?.code || err?.message || "unknown error"}. Go to Firebase Console â†’ Authentication â†’ Sign-in method, and make sure "Anonymous" is enabled.`
+        );
+        setLoading(false);
+      });
 
     return () => {
       active = false;
+      clearTimeout(timeoutId);
       unsubs.forEach((u) => u && u());
     };
   }, []);
@@ -357,8 +392,22 @@ export default function EverzonDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#FAF9F6]">
-        <Loader2 className="animate-spin text-[#0F9B8E]" size={28} />
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#FAF9F6] px-6 text-center">
+        {loadError ? (
+          <>
+            <AlertCircle className="text-[#B3532F] mb-3" size={32} />
+            <p className="text-sm text-[#1B1F3B] font-medium mb-1">Could not connect</p>
+            <p className="text-xs text-[#6E7482] max-w-sm mb-4">{loadError}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="bg-[#1B1F3B] text-white text-sm font-medium px-4 py-2 rounded-xl"
+            >
+              Retry
+            </button>
+          </>
+        ) : (
+          <Loader2 className="animate-spin text-[#0F9B8E]" size={28} />
+        )}
       </div>
     );
   }
