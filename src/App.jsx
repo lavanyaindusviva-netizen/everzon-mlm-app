@@ -275,27 +275,11 @@ export default function EverzonDashboard() {
                   sponsorId: null,
                   parentId: null,
                   position: "root",
-                  password: "-",
+                  password: await hashPassword("Ravi@4545"),
                   joinDate: new Date().toISOString(),
                   status: "active",
                 };
-                if (val.length > 0) {
-                  await saveKey("ez_users", [root, ...val]);
-                  return;
-                }
-                const demoMember = {
-                  id: "EVZ1001",
-                  name: "Demo Distributor",
-                  email: "demo@everzon.example",
-                  mobile: "9999999999",
-                  sponsorId: "EVZ1000",
-                  parentId: "EVZ1000",
-                  position: "left",
-                  password: await hashPassword("demo1234"),
-                  joinDate: new Date().toISOString(),
-                  status: "active",
-                };
-                await saveKey("ez_users", [root, demoMember]);
+                await saveKey("ez_users", val.length > 0 ? [root, ...val] : [root]);
                 return;
               }
               setUsers(val);
