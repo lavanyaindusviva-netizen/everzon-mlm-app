@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Package, GitBranch, ShoppingCart, Wallet,
   Plus, X, Copy, Check, Clock, TrendingUp, Upload, QrCode,
   ChevronRight, Users, ShieldCheck, Loader2, AlertCircle, LogIn, Menu, Search,
-  UserPlus, Layers, Award, Crown, Gift, Receipt, Star
+  UserPlus, Layers, Award, Crown, Gift, Receipt, Star, Trophy, Gem, Sparkles, Medal
 } from "lucide-react";
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
@@ -16,7 +16,7 @@ const imgML27 = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vc
 
 const PRODUCTS = [
   { model: "ML-86", name: "Premium ANC Earbuds", price: 2000, image: imgML86 },
-  { model: "ML-83", name: "Audio Sports Hero — Buds Pro 5", price: 2000, image: imgML83 },
+  { model: "ML-83", name: "Audio Sports Hero â€” Buds Pro 5", price: 2000, image: imgML83 },
   { model: "ML-84", name: "Smart TWS Earphone", price: 2000, image: imgML84 },
   { model: "ML-27", name: "ENC Pro Earbuds", price: 2000, image: imgML27 },
 ];
@@ -37,12 +37,12 @@ const REWARD_PCT = 0.01;
 const BINARY_LIFETIME_CAP = 100000;
 
 const RANKS = [
-  { name: "Crown Diamond", minBV: 10000000, royaltyEligible: true, rewardEligible: true, color: "#9333EA", textColor: "#FFFFFF" },
-  { name: "Diamond", minBV: 4000000, royaltyEligible: true, rewardEligible: false, color: "#0EA5E9", textColor: "#FFFFFF" },
-  { name: "Platinum", minBV: 1500000, royaltyEligible: true, rewardEligible: false, color: "#64748B", textColor: "#FFFFFF" },
-  { name: "Gold", minBV: 600000, royaltyEligible: false, rewardEligible: false, color: "#D4AF37", textColor: "#1B1F3B" },
-  { name: "Silver", minBV: 200000, royaltyEligible: false, rewardEligible: false, color: "#9CA3AF", textColor: "#1B1F3B" },
-  { name: "Bronze", minBV: 50000, royaltyEligible: false, rewardEligible: false, color: "#B45309", textColor: "#FFFFFF" },
+  { name: "Crown Diamond", minBV: 10000000, royaltyEligible: true, rewardEligible: true, color: "#9333EA", textColor: "#FFFFFF", icon: Crown },
+  { name: "Diamond", minBV: 4000000, royaltyEligible: true, rewardEligible: false, color: "#0EA5E9", textColor: "#FFFFFF", icon: Sparkles },
+  { name: "Platinum", minBV: 1500000, royaltyEligible: true, rewardEligible: false, color: "#64748B", textColor: "#FFFFFF", icon: Gem },
+  { name: "Gold", minBV: 600000, royaltyEligible: false, rewardEligible: false, color: "#D4AF37", textColor: "#1B1F3B", icon: Trophy },
+  { name: "Silver", minBV: 200000, royaltyEligible: false, rewardEligible: false, color: "#9CA3AF", textColor: "#1B1F3B", icon: Medal },
+  { name: "Star", minBV: 50000, royaltyEligible: false, rewardEligible: false, color: "#B45309", textColor: "#FFFFFF", icon: Star },
 ];
 function getRank(cumulativeMatchedBV) {
   for (const r of RANKS) if (cumulativeMatchedBV >= r.minBV) return r;
@@ -123,7 +123,7 @@ function subscribeKey(key, onValue, fallback, onError) {
     },
     (err) => {
       console.error("Firestore listen failed", key, err);
-      // IMPORTANT: always resolve the caller with the fallback even on error —
+      // IMPORTANT: always resolve the caller with the fallback even on error â€”
       // otherwise a permission/network failure leaves the app's "loading" state
       // stuck forever with no way out (the bug that caused the endless spinner).
       onValue(fallback);
@@ -228,7 +228,7 @@ export default function EverzonDashboard() {
 
   // Live sync: every key below is subscribed with onSnapshot, so a change made on
   // ANY device (member's phone, admin's laptop, etc.) reaches every other open
-  // session automatically — no manual refresh needed. This is what makes a
+  // session automatically â€” no manual refresh needed. This is what makes a
   // member's password-reset request show up on the admin's screen right away,
   // and makes an approved password take effect immediately for that member.
   useEffect(() => {
@@ -283,7 +283,7 @@ export default function EverzonDashboard() {
                   status: "active",
                 };
                 await saveKey("ez_users", [root, demoMember]);
-                // Always clear the loading state here too — if this write silently
+                // Always clear the loading state here too â€” if this write silently
                 // failed (e.g. permission denied), the snapshot won't fire again,
                 // so we must not leave the app stuck waiting on it.
                 if (active) setLoading(false);
@@ -294,7 +294,7 @@ export default function EverzonDashboard() {
             },
             [],
             () => {
-              // A real connection/permission error on the core "users" data —
+              // A real connection/permission error on the core "users" data â€”
               // surface it immediately instead of waiting for the hard timeout.
               if (active) {
                 setLoadError(true);
@@ -351,7 +351,7 @@ export default function EverzonDashboard() {
       osc.start();
       osc.stop(ctx.currentTime + 0.07);
     } catch (e) {
-      // Audio not available/blocked — fail silently, never break the click itself.
+      // Audio not available/blocked â€” fail silently, never break the click itself.
     }
   }, []);
   useEffect(() => {
@@ -399,9 +399,9 @@ export default function EverzonDashboard() {
     setPasswordRequests([]);
   };
 
-  // Self-serve recovery: if the HQ (root) ID is missing — usually because the
+  // Self-serve recovery: if the HQ (root) ID is missing â€” usually because the
   // automatic first-time setup silently failed (e.g. a Firestore write was
-  // blocked) — the tree has nothing to display and looks empty forever.
+  // blocked) â€” the tree has nothing to display and looks empty forever.
   // This lets the admin recreate the HQ ID directly from the app, without
   // needing direct database access.
   const [initializingRoot, setInitializingRoot] = useState(false);
@@ -430,7 +430,7 @@ export default function EverzonDashboard() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#FAF9F6] gap-3">
         <Loader2 className="animate-spin text-[#0F9B8E]" size={28} />
-        <span className="text-xs text-[#9298A6]">Connecting…</span>
+        <span className="text-xs text-[#9298A6]">Connectingâ€¦</span>
       </div>
     );
   }
@@ -594,7 +594,7 @@ export default function EverzonDashboard() {
             onClick={() => { setPortalMode(null); setLoginError(""); }}
             className="text-xs text-[#6E7482] underline mb-3 block"
           >
-            ← Back
+            â† Back
           </button>
           <input
             value={loginInput}
@@ -657,7 +657,7 @@ export default function EverzonDashboard() {
             onClick={() => { setPortalMode(null); setAdminError(""); }}
             className="text-xs text-[#6E7482] underline mb-3 block"
           >
-            ← Back
+            â† Back
           </button>
           <input
             type="password"
@@ -854,12 +854,12 @@ function ForgotMemberPasswordModal({ users, passwordRequests, setPasswordRequest
       return;
     }
     setSaving(true);
-    // IMPORTANT: this hash is derived from exactly what the member typed above —
+    // IMPORTANT: this hash is derived from exactly what the member typed above â€”
     // it is never re-generated later, so the password the admin approves is
     // guaranteed to be the same one the member just chose.
     const passwordHash = await hashPassword(newPassword);
     // Read/write through the SAME React state the admin panel reads (passwordRequests),
-    // instead of hitting Firestore directly and bypassing app state — this is what
+    // instead of hitting Firestore directly and bypassing app state â€” this is what
     // previously caused requests to "disappear" and admin approvals to apply a stale entry.
     const updated = [
       ...passwordRequests.filter((r) => r.userId !== upperId),
@@ -893,7 +893,7 @@ function ForgotMemberPasswordModal({ users, passwordRequests, setPasswordRequest
         ) : (
           <>
             <h3 className="font-display font-bold text-lg text-[#1B1F3B]">Forgot Password</h3>
-            <p className="text-xs text-[#6E7482] mt-1 mb-4">Set a new password — it will be active after admin approval.</p>
+            <p className="text-xs text-[#6E7482] mt-1 mb-4">Set a new password â€” it will be active after admin approval.</p>
             <div className="space-y-3 text-left">
               <input value={id} onChange={(e) => setId(e.target.value.toUpperCase())} placeholder="Distributor ID" className="w-full border border-[#D8D5CC] rounded-lg px-3 py-2.5 text-sm font-mono-tag" />
               <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="New Password" className="w-full border border-[#D8D5CC] rounded-lg px-3 py-2.5 text-sm" />
@@ -966,7 +966,7 @@ function ForgotAdminPasscodeModal({ onClose, onSuccess }) {
   );
 }
 
-// Public self-registration — usable WITHOUT logging in, so a brand new
+// Public self-registration â€” usable WITHOUT logging in, so a brand new
 // distributor (or the person recruiting them) can create a joining ID
 // directly from the login screen. Unlike the in-tree "+" join flow, both the
 // sponsor AND the exact placement slot (parent ID + Left/Right) must be
@@ -1053,7 +1053,7 @@ function PublicJoinModal({ users, setUsers, onClose, onSuccess }) {
     loadKey("ez_mailbox", []).then((mailbox) => {
       mailbox.push({
         to: newUser.email,
-        subject: "Welcome to Everzon — Your Distributor ID",
+        subject: "Welcome to Everzon â€” Your Distributor ID",
         body: `ID: ${newId}, Password: ${newPassword}`,
         sentAt: new Date().toISOString(),
       });
@@ -1070,7 +1070,7 @@ function PublicJoinModal({ users, setUsers, onClose, onSuccess }) {
         <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-[#E5E3DC] shrink-0">
           <div>
             <h3 className="font-display font-bold text-lg text-[#1B1F3B]">Create Your Joining ID</h3>
-            <p className="text-[11px] text-[#6E7482] mt-0.5">No login needed — fill this in to register.</p>
+            <p className="text-[11px] text-[#6E7482] mt-0.5">No login needed â€” fill this in to register.</p>
           </div>
           <button onClick={onClose}><X size={20} /></button>
         </div>
@@ -1202,6 +1202,7 @@ function DashboardTab({ currentUser, users, orders, income, isAdmin, carry, cumu
   }, [users, orders, currentUser, isAdmin, carry]);
   const matchedBV = Math.min(leftBV, rightBV);
   const [showReset, setShowReset] = useState(false);
+  const [rankDetail, setRankDetail] = useState(null);
 
   return (
     <div className="space-y-5">
@@ -1229,9 +1230,9 @@ function DashboardTab({ currentUser, users, orders, income, isAdmin, carry, cumu
         <div className="grid grid-cols-2 gap-4">
           <StatCard label="Status" value={currentUser.status === "hold" ? "On Hold" : currentUser.status === "active" ? "Active" : "Inactive"}
             color={currentUser.status === "active" ? TEAL : "#B3532F"} />
-          <StatCard label="Active Since" value={currentUser.status === "active" ? `${daysSince(currentUser.joinDate)} days` : "—"} color={INDIGO} />
+          <StatCard label="Active Since" value={currentUser.status === "active" ? `${daysSince(currentUser.joinDate)} days` : "â€”"} color={INDIGO} />
           <StatCard label="Team Size" value={teamSize} color={INDIGO} />
-          <StatCard label="Total Income" value={`₹${totalIncome.toLocaleString("en-IN")}`} color={GOLD} />
+          <StatCard label="Total Income" value={`â‚¹${totalIncome.toLocaleString("en-IN")}`} color={GOLD} />
         </div>
       )}
 
@@ -1280,22 +1281,38 @@ function DashboardTab({ currentUser, users, orders, income, isAdmin, carry, cumu
 
       {isAdmin && (
         <div className="bg-white rounded-2xl border border-[#E5E3DC] p-4">
-          <h3 className="font-display font-semibold text-sm text-[#1B1F3B] mb-3">Rank Distribution</h3>
+          <h3 className="font-display font-semibold text-sm text-[#1B1F3B] mb-1">Rank Distribution</h3>
+          <p className="text-[10px] text-[#9298A6] mb-3">Tap a rank to see who holds it and their income.</p>
           <div className="grid grid-cols-2 gap-2">
             {RANKS.map((r) => {
-              const count = users.filter((u) => u.position !== "root" && getRank(cumulativeBV?.[u.id] || 0)?.name === r.name).length;
+              const count = users.filter((u) => getRank(cumulativeBV?.[u.id] || 0)?.name === r.name).length;
               return (
-                <div key={r.name} className="flex items-center justify-between rounded-lg px-3 py-2" style={{ backgroundColor: `${r.color}1A` }}>
+                <button
+                  key={r.name}
+                  onClick={() => setRankDetail(r)}
+                  className="flex items-center justify-between rounded-lg px-3 py-2 text-left"
+                  style={{ backgroundColor: `${r.color}1A` }}
+                >
                   <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: r.color }} />
+                    <r.icon size={13} fill={r.color} color={r.color} />
                     <span className="text-[11px] font-medium text-[#1B1F3B]">{r.name}</span>
                   </div>
                   <span className="text-xs font-display font-bold" style={{ color: r.color }}>{count}</span>
-                </div>
+                </button>
               );
             })}
           </div>
         </div>
+      )}
+
+      {rankDetail && (
+        <RankDetailModal
+          rank={rankDetail}
+          users={users}
+          income={income}
+          cumulativeBV={cumulativeBV}
+          onClose={() => setRankDetail(null)}
+        />
       )}
 
       {isAdmin && (
@@ -1415,12 +1432,13 @@ function RankBadge({ rank, size = "md" }) {
       </span>
     );
   }
+  const RankIcon = rank.icon || Star;
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full font-semibold ${size === "sm" ? "text-[8px] px-1.5 py-0.5" : "text-[10px] px-2 py-1"}`}
       style={{ backgroundColor: rank.color, color: rank.textColor }}
     >
-      <Star size={size === "sm" ? 8 : 10} fill={rank.textColor} color={rank.textColor} />
+      <RankIcon size={size === "sm" ? 8 : 10} fill={rank.textColor} color={rank.textColor} />
       {rank.name}
     </span>
   );
@@ -1441,7 +1459,7 @@ function RankLegendCard({ cumulativeBV, currentUser }) {
               style={{ backgroundColor: achieved ? `${r.color}1A` : "#FAF9F6" }}
             >
               <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: r.color }} />
+                <r.icon size={13} fill={r.color} color={r.color} />
                 <span className="text-xs font-medium text-[#1B1F3B]">{r.name}</span>
                 {achieved && <Check size={12} className="text-[#0F9B8E]" />}
               </div>
@@ -1453,6 +1471,61 @@ function RankLegendCard({ cumulativeBV, currentUser }) {
       <p className="text-[10px] text-[#9298A6] mt-3">
         Rank is based on your all-time cumulative matched (binary) Business Volume. Platinum and above share the Royalty pool; Crown Diamond also shares the Reward pool.
       </p>
+    </div>
+  );
+}
+
+function RankDetailModal({ rank, users, income, cumulativeBV, onClose }) {
+  const holders = users.filter((u) => getRank(cumulativeBV?.[u.id] || 0)?.name === rank.name);
+  const RankIcon = rank.icon;
+  const rows = holders.map((u) => {
+    const myIncome = income.filter((i) => i.userId === u.id);
+    const totalIncome = myIncome.reduce((s, i) => s + i.total, 0);
+    const rankTypeIncome = myIncome.reduce((s, i) => s + (i.rank || 0) + (i.royalty || 0) + (i.reward || 0), 0);
+    return { user: u, totalIncome, rankTypeIncome };
+  }).sort((a, b) => b.totalIncome - a.totalIncome);
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white w-full max-w-sm rounded-2xl overflow-hidden max-h-[85vh] max-h-[85dvh] flex flex-col">
+        <div
+          className="px-5 py-4 flex items-center justify-between shrink-0"
+          style={{ backgroundColor: rank.color }}
+        >
+          <div className="flex items-center gap-2">
+            <RankIcon size={18} fill={rank.textColor} color={rank.textColor} />
+            <span className="font-display font-bold text-sm" style={{ color: rank.textColor }}>{rank.name} Rank</span>
+          </div>
+          <button onClick={onClose}><X size={18} style={{ color: rank.textColor }} /></button>
+        </div>
+
+        <div className="p-5 overflow-y-auto">
+          <p className="text-[11px] text-[#6E7482] mb-3">
+            {holders.length === 0
+              ? "No one has reached this rank yet."
+              : `${holders.length} distributor${holders.length > 1 ? "s" : ""} currently hold this rank, sorted by total income.`}
+          </p>
+          <div className="space-y-2">
+            {rows.map(({ user, totalIncome, rankTypeIncome }) => (
+              <div key={user.id} className="border border-[#E5E3DC] rounded-xl p-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-display font-semibold text-xs text-[#1B1F3B]">{user.name}</div>
+                    <div className="font-mono-tag text-[10px] text-[#6E7482]">{user.id}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[9px] text-[#9298A6]">Total Income</div>
+                    <div className="font-display font-bold text-sm" style={{ color: rank.color }}>â‚¹{totalIncome.toLocaleString("en-IN")}</div>
+                  </div>
+                </div>
+                <div className="text-[10px] text-[#6E7482] mt-1.5 pt-1.5 border-t border-[#F0EFE9]">
+                  Rank + Royalty + Reward income (all-time): <span className="font-semibold text-[#1B1F3B]">â‚¹{rankTypeIncome.toLocaleString("en-IN")}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1476,7 +1549,7 @@ function IncomeBreakdown({ entry }) {
           </div>
           <div className="min-w-0">
             <div className="text-[8px] leading-tight text-[#9298A6]">{label}</div>
-            <div className="text-[10px] leading-tight font-semibold text-[#1B1F3B]">₹{entry[key] || 0}</div>
+            <div className="text-[10px] leading-tight font-semibold text-[#1B1F3B]">â‚¹{entry[key] || 0}</div>
           </div>
         </div>
       ))}
@@ -1536,7 +1609,7 @@ function ProductsTab({ products, setProducts, isAdmin }) {
             <div className="p-4">
               <span className="font-mono-tag text-[10px] bg-[#1B1F3B] text-white px-2 py-0.5 rounded-full">{p.model}</span>
               <div className="font-display font-semibold text-[#1B1F3B] mt-2">{p.name}</div>
-              <div className="font-display font-bold text-lg text-[#0F9B8E] mt-1">₹{p.price.toLocaleString("en-IN")}</div>
+              <div className="font-display font-bold text-lg text-[#0F9B8E] mt-1">â‚¹{p.price.toLocaleString("en-IN")}</div>
             </div>
           </div>
         ))}
@@ -1638,7 +1711,7 @@ function AddProductModal({ products, onClose, onSave }) {
         <div className="space-y-3">
           <Field label="Model Number"><input value={model} onChange={(e) => setModel(e.target.value)} className="in" placeholder="e.g. ML-90" /></Field>
           <Field label="Product Name"><input value={name} onChange={(e) => setName(e.target.value)} className="in" /></Field>
-          <Field label="Price (₹)"><input type="number" value={price} onChange={(e) => setPrice(e.target.value)} className="in" /></Field>
+          <Field label="Price (â‚¹)"><input type="number" value={price} onChange={(e) => setPrice(e.target.value)} className="in" /></Field>
           <Field label="Product Image (optional)">
             <label className="flex items-center gap-2 border border-dashed border-[#D8D5CC] rounded-lg px-3 py-3 text-xs text-[#6E7482] cursor-pointer">
               <Upload size={14} />
@@ -1739,7 +1812,7 @@ function GenealogyTab({ users, setUsers, currentUser, isAdmin, cumulativeBV, onI
   };
 
   // Admin-only: permanently delete a distributor ID. Only allowed when the ID has no
-  // children (a leaf node), so deleting it can never break the binary tree — the
+  // children (a leaf node), so deleting it can never break the binary tree â€” the
   // LEFT/RIGHT slot under its parent simply becomes an empty, joinable slot again.
   const [deleteError, setDeleteError] = useState("");
   const deleteUser = async (userId) => {
@@ -1758,7 +1831,7 @@ function GenealogyTab({ users, setUsers, currentUser, isAdmin, cumulativeBV, onI
   };
 
   // Admin-only: move an ID and its entire downline team to a different LEFT/RIGHT
-  // slot anywhere in the tree. Only the moved node's parentId/position change —
+  // slot anywhere in the tree. Only the moved node's parentId/position change â€”
   // its children keep pointing at it, so the whole team moves together.
   const [moveTarget, setMoveTarget] = useState(null);
   const moveTeam = async (userId, newParentId, newPosition) => {
@@ -1776,7 +1849,7 @@ function GenealogyTab({ users, setUsers, currentUser, isAdmin, cumulativeBV, onI
       <h2 className="font-display font-bold text-xl text-[#1B1F3B] mb-1">Genealogy</h2>
       <p className="text-xs text-[#6E7482] mb-4">
         {isAdmin
-          ? "Click an empty slot to place a new joining · click an ID to manage it"
+          ? "Click an empty slot to place a new joining Â· click an ID to manage it"
           : "Click an empty slot in your team to place a new joining"}
       </p>
 
@@ -1909,7 +1982,7 @@ function ManageUserModal({ user, users, isAdmin, deleteError, cumulativeBV, onCl
   const isHeld = user.status === "hold";
   const isRoot = user.position === "root";
   const hasChildren = users ? getChildren(users, user.id).length > 0 : false;
-  const rank = isRoot ? null : getRank(cumulativeBV?.[user.id] || 0);
+  const rank = getRank(cumulativeBV?.[user.id] || 0);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [settingPassword, setSettingPassword] = useState(false);
   const [newPass, setNewPass] = useState("");
@@ -1975,7 +2048,10 @@ function ManageUserModal({ user, users, isAdmin, deleteError, cumulativeBV, onCl
           <ShieldCheck size={22} color="#FFFFFF" />
         </div>
         <h3 className="font-display font-bold text-lg text-[#1B1F3B] mt-3">{user.name}</h3>
-        <div className="font-mono-tag text-xs mt-0.5" style={{ color: rank ? rank.color : "#6E7482" }}>{user.id}</div>
+        <div className="font-mono-tag text-xs mt-0.5 flex items-center justify-center gap-1" style={{ color: rank ? rank.color : "#6E7482" }}>
+          {rank && <rank.icon size={12} fill={rank.color} color={rank.color} />}
+          {user.id}
+        </div>
         {rank && (
           <div className="mt-1.5 flex justify-center">
             <RankBadge rank={rank} />
@@ -2062,7 +2138,7 @@ function ManageUserModal({ user, users, isAdmin, deleteError, cumulativeBV, onCl
         )}
 
         {isRoot ? (
-          <p className="text-xs text-[#6E7482] mt-4">The HQ ID cannot be put on hold, moved, or deleted — but its password can still be set below.</p>
+          <p className="text-xs text-[#6E7482] mt-4">The HQ ID cannot be put on hold, moved, or deleted â€” but its password can still be set below.</p>
         ) : (
           <div className="flex gap-2 mt-5">
             <button onClick={onClose} className="flex-1 border border-[#D8D5CC] rounded-xl py-2.5 text-sm font-medium">
@@ -2289,7 +2365,7 @@ const TreeNode = React.memo(function TreeNode({ users, nodeId, onSlotClick, allo
   const right = getChildren(users, nodeId).find((c) => c.position === "right");
   const canJoinHere = !allowedParentIds || allowedParentIds.has(nodeId);
   const isHeld = node.status === "hold";
-  const rank = node.position === "root" ? null : getRank(cumulativeBV?.[node.id] || 0);
+  const rank = getRank(cumulativeBV?.[node.id] || 0);
 
   return (
     <div className="flex flex-col items-center">
@@ -2304,7 +2380,10 @@ const TreeNode = React.memo(function TreeNode({ users, nodeId, onSlotClick, allo
         }`}
         style={{ minWidth: 110, boxShadow: rank ? `0 0 0 2px ${rank.color}` : "none" }}
       >
-        <div className="font-mono-tag text-[10px] font-semibold" style={{ color: rank ? rank.color : "#6E7482" }}>{node.id}</div>
+        <div className="font-mono-tag text-[10px] font-semibold flex items-center justify-center gap-1" style={{ color: rank ? rank.color : "#6E7482" }}>
+          {rank && <rank.icon size={10} fill={rank.color} color={rank.color} />}
+          {node.id}
+        </div>
         <div className="font-display font-medium text-xs text-[#1B1F3B] truncate max-w-[100px] mx-auto">{node.name}</div>
         <div className={`text-[9px] mt-0.5 font-medium ${isHeld ? "text-[#B3532F]" : node.status === "active" ? "text-[#0F9B8E]" : "text-[#B3532F]"}`}>
           {isHeld ? "On Hold" : node.status === "active" ? "Active" : node.status === "root" ? "HQ" : "Inactive"}
@@ -2432,7 +2511,7 @@ function JoinModal({ users, setUsers, slot, currentUser, isAdmin, onClose, onSuc
     loadKey("ez_mailbox", []).then((mailbox) => {
       mailbox.push({
         to: newUser.email,
-        subject: "Welcome to Everzon — Your Distributor ID",
+        subject: "Welcome to Everzon â€” Your Distributor ID",
         body: `ID: ${newId}, Password: ${newPassword}`,
         sentAt: new Date().toISOString(),
       });
@@ -2456,7 +2535,7 @@ function JoinModal({ users, setUsers, slot, currentUser, isAdmin, onClose, onSuc
           style={{ WebkitOverflowScrolling: "touch", overscrollBehavior: "contain", touchAction: "pan-y" }}
         >
           <div className="bg-[#EAF4F2] text-xs text-[#0F9B8E] rounded-lg px-3 py-2 mb-4 font-mono-tag">
-            Placed under: {slot.parentId} — {slot.position.toUpperCase()}
+            Placed under: {slot.parentId} â€” {slot.position.toUpperCase()}
           </div>
 
           <div className="space-y-3">
@@ -2582,7 +2661,7 @@ function CredentialsModal({ result, onClose }) {
 
         <div className="flex items-start gap-1.5 text-[10px] text-[#B3532F] bg-[#FCEEE9] rounded-lg p-2.5 mt-3 text-left">
           <AlertCircle size={13} className="shrink-0 mt-0.5" />
-          Email is currently simulated (won't reach a real inbox) — once a backend email service is connected, it will also be sent to {result.email}.
+          Email is currently simulated (won't reach a real inbox) â€” once a backend email service is connected, it will also be sent to {result.email}.
         </div>
 
         <button onClick={copy} className="w-full border border-[#D8D5CC] rounded-xl py-2.5 mt-4 text-sm font-medium flex items-center justify-center gap-2">
@@ -2677,7 +2756,7 @@ function OrdersTab({ users, setUsers, orders, setOrders, payment, setPayment, pr
     const rest = orders.filter((o) => o.status !== "pending");
     return (
       <div>
-        <h2 className="font-display font-bold text-xl text-[#1B1F3B] mb-4">Orders — Admin</h2>
+        <h2 className="font-display font-bold text-xl text-[#1B1F3B] mb-4">Orders â€” Admin</h2>
 
         <div className="mb-5">
           <PasswordRequestsCard
@@ -2709,10 +2788,10 @@ function OrdersTab({ users, setUsers, orders, setOrders, payment, setPayment, pr
             <div key={o.orderId} className="bg-white rounded-xl border border-[#E5E3DC] p-4">
               <div className="flex justify-between items-start">
                 <div>
-                  <div className="font-mono-tag text-xs text-[#6E7482]">{o.orderId} · {o.userId}</div>
+                  <div className="font-mono-tag text-xs text-[#6E7482]">{o.orderId} Â· {o.userId}</div>
                   <div className="text-sm mt-1">{o.items.map((it) => `${it.name} x${it.qty}`).join(", ")}</div>
                 </div>
-                <div className="font-display font-bold text-[#1B1F3B]">₹{o.total.toLocaleString("en-IN")}</div>
+                <div className="font-display font-bold text-[#1B1F3B]">â‚¹{o.total.toLocaleString("en-IN")}</div>
               </div>
               <div className="flex gap-2 mt-3">
                 <button onClick={() => approveOrder(o.orderId, true)} className="flex-1 bg-[#0F9B8E] text-white text-xs font-medium py-2 rounded-lg">Approve</button>
@@ -2726,7 +2805,7 @@ function OrdersTab({ users, setUsers, orders, setOrders, payment, setPayment, pr
         <div className="space-y-2">
           {rest.map((o) => (
             <div key={o.orderId} className="bg-white rounded-xl border border-[#E5E3DC] p-3 flex justify-between text-xs">
-              <span className="font-mono-tag">{o.orderId} · {o.userId}</span>
+              <span className="font-mono-tag">{o.orderId} Â· {o.userId}</span>
               <span className={o.status === "approved" ? "text-[#0F9B8E]" : "text-red-500"}>{o.status}</span>
             </div>
           ))}
@@ -2748,7 +2827,7 @@ function OrdersTab({ users, setUsers, orders, setOrders, payment, setPayment, pr
             <img src={p.image} alt={p.name} className="w-14 h-14 rounded-lg object-cover" loading="lazy" decoding="async" />
             <div className="flex-1">
               <div className="text-sm font-medium text-[#1B1F3B]">{p.name}</div>
-              <div className="text-xs text-[#6E7482]">₹{p.price.toLocaleString("en-IN")}</div>
+              <div className="text-xs text-[#6E7482]">â‚¹{p.price.toLocaleString("en-IN")}</div>
             </div>
             <div className="flex items-center gap-2">
               <button onClick={() => setCart((c) => ({ ...c, [p.model]: Math.max(0, (c[p.model] || 0) - 1) }))} className="w-7 h-7 rounded-full border border-[#D8D5CC]">-</button>
@@ -2762,7 +2841,7 @@ function OrdersTab({ users, setUsers, orders, setOrders, payment, setPayment, pr
       {total > 0 && (
         <div className="bg-[#1B1F3B] rounded-xl p-4 mt-4 flex items-center justify-between">
           <span className="text-white text-sm">Total</span>
-          <span className="text-white font-display font-bold text-lg">₹{total.toLocaleString("en-IN")}</span>
+          <span className="text-white font-display font-bold text-lg">â‚¹{total.toLocaleString("en-IN")}</span>
         </div>
       )}
 
@@ -2773,7 +2852,7 @@ function OrdersTab({ users, setUsers, orders, setOrders, payment, setPayment, pr
       >
         {placing ? "Placing..." : "Place Order"}
       </button>
-      {placed && <div className="text-center text-xs text-[#0F9B8E] mt-2">Order placed — please wait for admin approval</div>}
+      {placed && <div className="text-center text-xs text-[#0F9B8E] mt-2">Order placed â€” please wait for admin approval</div>}
 
       <div className="bg-white rounded-2xl border border-[#E5E3DC] p-4 mt-6">
         <h3 className="font-display font-semibold text-sm text-[#1B1F3B] mb-3 flex items-center gap-2">
@@ -2839,7 +2918,9 @@ function IncomeTab({ users, orders, setOrders, income, setIncome, carry, setCarr
     const matchedThisWeek = {};
     const newCarry = { ...carry };
     users.forEach((u) => {
-      if (u.position === "root") return;
+      // Root (HQ) now participates in binary matching just like any other
+      // distributor â€” this is what makes it eligible for Binary, Rank,
+      // Royalty and Reward income too, not just Direct and Level.
       const leftChild = getChildren(users, u.id).find((c) => c.position === "left");
       const rightChild = getChildren(users, u.id).find((c) => c.position === "right");
       const leftIds = leftChild ? getSubtreeIds(users, leftChild.id) : [];
@@ -2881,8 +2962,8 @@ function IncomeTab({ users, orders, setOrders, income, setIncome, carry, setCarr
     });
 
     const directMap = {};
-    // Direct Income must fire on a buyer's TRUE first-ever approved order — not just
-    // "no prior CLOSED order" — otherwise if a brand-new buyer's first two orders land
+    // Direct Income must fire on a buyer's TRUE first-ever approved order â€” not just
+    // "no prior CLOSED order" â€” otherwise if a brand-new buyer's first two orders land
     // in the same unclosed batch, both would incorrectly pay Direct Income. We instead
     // find each buyer's earliest approved order (closed or not) across their full
     // history and only pay when the order being processed IS that one.
@@ -2954,7 +3035,7 @@ function IncomeTab({ users, orders, setOrders, income, setIncome, carry, setCarr
       const totalAmt = binary + direct + level + rank + royalty + reward;
       if (totalAmt > 0) {
         // 5% admin charge is deducted from the gross commission before it is
-        // credited — "total" (used everywhere for the distributor's payable
+        // credited â€” "total" (used everywhere for the distributor's payable
         // amount) is always the NET figure; grossTotal/adminCharge are kept
         // alongside for the income slip breakdown.
         const adminCharge = totalAmt * ADMIN_CHARGE_PCT;
@@ -2992,7 +3073,7 @@ function IncomeTab({ users, orders, setOrders, income, setIncome, carry, setCarr
     const totalNetPaid = newIncomeEntries.reduce((s, e) => s + e.total, 0);
     const totalAdminCharge = newIncomeEntries.reduce((s, e) => s + e.adminCharge, 0);
     setLastRun(
-      `Closing done — Total Cycle BV ₹${totalCycleBV.toLocaleString("en-IN")}, Scale Factor ${scaleFactor.toFixed(2)}. Net income credited to ${newIncomeEntries.length} distributors: ₹${totalNetPaid.toLocaleString("en-IN")} (Admin charge withheld: ₹${totalAdminCharge.toLocaleString("en-IN")}). Unmatched BV carried forward for next week.`
+      `Closing done â€” Total Cycle BV â‚¹${totalCycleBV.toLocaleString("en-IN")}, Scale Factor ${scaleFactor.toFixed(2)}. Net income credited to ${newIncomeEntries.length} distributors: â‚¹${totalNetPaid.toLocaleString("en-IN")} (Admin charge withheld: â‚¹${totalAdminCharge.toLocaleString("en-IN")}). Unmatched BV carried forward for next week.`
     );
   };
 
@@ -3002,7 +3083,7 @@ function IncomeTab({ users, orders, setOrders, income, setIncome, carry, setCarr
     const weeks = [...new Set(income.map((i) => i.weekLabel))].sort().reverse();
     return (
       <div>
-        <h2 className="font-display font-bold text-xl text-[#1B1F3B] mb-4">Income — Weekly Closing</h2>
+        <h2 className="font-display font-bold text-xl text-[#1B1F3B] mb-4">Income â€” Weekly Closing</h2>
         <button
           onClick={runWeeklyClosing}
           disabled={running}
@@ -3022,10 +3103,13 @@ function IncomeTab({ users, orders, setOrders, income, setIncome, carry, setCarr
                 return (
                   <div key={idx} className="bg-white border border-[#E5E3DC] rounded-lg p-2.5 text-xs">
                     <div className="flex justify-between items-center">
-                      <span className="font-mono-tag" style={{ color: rank ? rank.color : "#1B1F3B" }}>{i.userId}</span>
+                      <span className="font-mono-tag inline-flex items-center gap-1" style={{ color: rank ? rank.color : "#1B1F3B" }}>
+                        {rank && <rank.icon size={11} fill={rank.color} color={rank.color} />}
+                        {i.userId}
+                      </span>
                       <div className="flex items-center gap-2">
                         {rank && <RankBadge rank={rank} size="sm" />}
-                        <span className="font-semibold text-[#0F9B8E]">₹{i.total}</span>
+                        <span className="font-semibold text-[#0F9B8E]">â‚¹{i.total}</span>
                         <button onClick={() => setSlipEntry(i)} className="text-[#6E7482] hover:text-[#1B1F3B]" title="View Income Slip">
                           <Receipt size={14} />
                         </button>
@@ -3059,9 +3143,9 @@ function IncomeTab({ users, orders, setOrders, income, setIncome, carry, setCarr
         {myRank && <RankBadge rank={myRank} />}
       </div>
       <div className="grid grid-cols-2 gap-3 mb-5">
-        <StatCard label="My Business (BV)" value={`₹${myOrdersBV.toLocaleString("en-IN")}`} color={INDIGO} />
-        <StatCard label="This Week" value={latestWeek ? `₹${latestWeek.total}` : "₹0"} color={TEAL} />
-        <StatCard label="Total Income" value={`₹${totalIncome.toLocaleString("en-IN")}`} color={GOLD} />
+        <StatCard label="My Business (BV)" value={`â‚¹${myOrdersBV.toLocaleString("en-IN")}`} color={INDIGO} />
+        <StatCard label="This Week" value={latestWeek ? `â‚¹${latestWeek.total}` : "â‚¹0"} color={TEAL} />
+        <StatCard label="Total Income" value={`â‚¹${totalIncome.toLocaleString("en-IN")}`} color={GOLD} />
         <StatCard label="Weeks Paid" value={myIncome.length} color={INDIGO} />
       </div>
       <p className="text-[10px] text-[#9298A6] mb-4 -mt-2">
@@ -3076,7 +3160,7 @@ function IncomeTab({ users, orders, setOrders, income, setIncome, carry, setCarr
             <div className="flex justify-between items-center">
               <span className="text-xs font-mono-tag text-[#6E7482]">{i.weekLabel} {i.rankName && <span className="text-[#D4AF37] font-semibold ml-1">{i.rankName}</span>}</span>
               <div className="flex items-center gap-2">
-                <span className="font-display font-bold text-[#0F9B8E]">₹{i.total}</span>
+                <span className="font-display font-bold text-[#0F9B8E]">â‚¹{i.total}</span>
                 <button onClick={() => setSlipEntry(i)} className="text-[#6E7482] hover:text-[#1B1F3B]" title="View Income Slip">
                   <Receipt size={15} />
                 </button>
@@ -3126,7 +3210,7 @@ function IncomeSlipModal({ entry, users, onClose }) {
           <div className="flex items-center justify-between mb-4">
             <div>
               <div className="font-display font-semibold text-sm text-[#1B1F3B]">{person?.name || entry.userId}</div>
-              <div className="font-mono-tag text-[11px] text-[#6E7482]">{entry.userId} · Week of {entry.weekLabel}</div>
+              <div className="font-mono-tag text-[11px] text-[#6E7482]">{entry.userId} Â· Week of {entry.weekLabel}</div>
             </div>
             {rank && <RankBadge rank={rank} size="sm" />}
           </div>
@@ -3135,20 +3219,20 @@ function IncomeSlipModal({ entry, users, onClose }) {
             {rows.map((r) => (
               <div key={r.label} className="flex justify-between px-3 py-2 text-xs border-b border-[#F0EFE9] last:border-b-0">
                 <span className="text-[#6E7482]">{r.label}</span>
-                <span className="font-mono-tag text-[#1B1F3B]">₹{r.value.toLocaleString("en-IN")}</span>
+                <span className="font-mono-tag text-[#1B1F3B]">â‚¹{r.value.toLocaleString("en-IN")}</span>
               </div>
             ))}
             <div className="flex justify-between px-3 py-2 text-xs bg-[#FAF9F6] font-semibold">
               <span className="text-[#1B1F3B]">Gross Total</span>
-              <span className="font-mono-tag text-[#1B1F3B]">₹{gross.toLocaleString("en-IN")}</span>
+              <span className="font-mono-tag text-[#1B1F3B]">â‚¹{gross.toLocaleString("en-IN")}</span>
             </div>
             <div className="flex justify-between px-3 py-2 text-xs">
               <span className="text-[#B3532F]">Admin Charge (5%)</span>
-              <span className="font-mono-tag text-[#B3532F]">−₹{adminCharge.toLocaleString("en-IN")}</span>
+              <span className="font-mono-tag text-[#B3532F]">âˆ’â‚¹{adminCharge.toLocaleString("en-IN")}</span>
             </div>
             <div className="flex justify-between px-3 py-3 text-sm font-bold" style={{ backgroundColor: "#EAF4F2" }}>
               <span className="text-[#0F9B8E]">Net Payable</span>
-              <span className="font-mono-tag text-[#0F9B8E]">₹{entry.total.toLocaleString("en-IN")}</span>
+              <span className="font-mono-tag text-[#0F9B8E]">â‚¹{entry.total.toLocaleString("en-IN")}</span>
             </div>
           </div>
 
