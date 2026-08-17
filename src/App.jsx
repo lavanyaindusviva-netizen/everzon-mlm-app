@@ -16,7 +16,7 @@ const imgML27 = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vc
 
 const PRODUCTS = [
   { model: "ML-86", name: "Premium ANC Earbuds", price: 2000, image: imgML86 },
-  { model: "ML-83", name: "Audio Sports Hero â€” Buds Pro 5", price: 2000, image: imgML83 },
+  { model: "ML-83", name: "Audio Sports Hero — Buds Pro 5", price: 2000, image: imgML83 },
   { model: "ML-84", name: "Smart TWS Earphone", price: 2000, image: imgML84 },
   { model: "ML-27", name: "ENC Pro Earbuds", price: 2000, image: imgML27 },
 ];
@@ -74,6 +74,12 @@ const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
 const auth = getAuth(firebaseApp);
 
+// Cloudinary is used for image hosting instead of Firebase Storage (which now
+// requires the paid Blaze plan). Cloudinary's free tier needs no card and
+// comfortably covers a product catalog + QR code for this app.
+const CLOUDINARY_CLOUD_NAME = "vtil7boq";
+const CLOUDINARY_UPLOAD_PRESET = "j8kyro6p";
+
 let authReadyPromise = null;
 function ensureFirebaseAuth() {
   if (!authReadyPromise) {
@@ -103,6 +109,33 @@ async function saveKey(key, value) {
     console.error("Firestore save failed", key, e);
   }
 }
+// Uploads an image file to Cloudinary (NOT into a Firestore document) and
+// returns its public URL. This is what lets the app hold as many
+// products/images as needed — Firestore documents are capped at 1 MB total,
+// which previously meant only 1-2 product photos could ever be saved before
+// hitting that limit (since the whole catalog lived in a single document).
+// Cloudinary's free tier (25 GB) has no such cap, so only a small URL string
+// is stored in Firestore now.
+async function uploadImageToStorage(path, file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) throw new Error("Cloudinary upload failed");
+  const data = await res.json();
+  return data.secure_url;
+}
+// Cloudinary deletion requires a signed, server-side request (with an API
+// secret that must never be exposed in client code), so this app — which has
+// no backend server — cannot safely auto-delete old Cloudinary images. Old
+// images are simply left in place; this is a non-issue on the 25 GB free tier
+// for a product catalog + QR code.
+async function deleteImageFromStorage(url) {
+  // Intentionally a no-op — see note above.
+}
 // Real-time listener: keeps every connected device (member phones, admin browser)
 // in sync automatically. This replaces the old "load once on page open" approach,
 // which is why a request submitted on one device never used to appear on another
@@ -123,7 +156,7 @@ function subscribeKey(key, onValue, fallback, onError) {
     },
     (err) => {
       console.error("Firestore listen failed", key, err);
-      // IMPORTANT: always resolve the caller with the fallback even on error â€”
+      // IMPORTANT: always resolve the caller with the fallback even on error —
       // otherwise a permission/network failure leaves the app's "loading" state
       // stuck forever with no way out (the bug that caused the endless spinner).
       onValue(fallback);
@@ -228,7 +261,7 @@ export default function EverzonDashboard() {
 
   // Live sync: every key below is subscribed with onSnapshot, so a change made on
   // ANY device (member's phone, admin's laptop, etc.) reaches every other open
-  // session automatically â€” no manual refresh needed. This is what makes a
+  // session automatically — no manual refresh needed. This is what makes a
   // member's password-reset request show up on the admin's screen right away,
   // and makes an approved password take effect immediately for that member.
   useEffect(() => {
@@ -283,7 +316,7 @@ export default function EverzonDashboard() {
                   status: "active",
                 };
                 await saveKey("ez_users", [root, demoMember]);
-                // Always clear the loading state here too â€” if this write silently
+                // Always clear the loading state here too — if this write silently
                 // failed (e.g. permission denied), the snapshot won't fire again,
                 // so we must not leave the app stuck waiting on it.
                 if (active) setLoading(false);
@@ -294,7 +327,7 @@ export default function EverzonDashboard() {
             },
             [],
             () => {
-              // A real connection/permission error on the core "users" data â€”
+              // A real connection/permission error on the core "users" data —
               // surface it immediately instead of waiting for the hard timeout.
               if (active) {
                 setLoadError(true);
@@ -351,7 +384,7 @@ export default function EverzonDashboard() {
       osc.start();
       osc.stop(ctx.currentTime + 0.07);
     } catch (e) {
-      // Audio not available/blocked â€” fail silently, never break the click itself.
+      // Audio not available/blocked — fail silently, never break the click itself.
     }
   }, []);
   useEffect(() => {
@@ -399,9 +432,9 @@ export default function EverzonDashboard() {
     setPasswordRequests([]);
   };
 
-  // Self-serve recovery: if the HQ (root) ID is missing â€” usually because the
+  // Self-serve recovery: if the HQ (root) ID is missing — usually because the
   // automatic first-time setup silently failed (e.g. a Firestore write was
-  // blocked) â€” the tree has nothing to display and looks empty forever.
+  // blocked) — the tree has nothing to display and looks empty forever.
   // This lets the admin recreate the HQ ID directly from the app, without
   // needing direct database access.
   const [initializingRoot, setInitializingRoot] = useState(false);
@@ -430,7 +463,7 @@ export default function EverzonDashboard() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#FAF9F6] gap-3">
         <Loader2 className="animate-spin text-[#0F9B8E]" size={28} />
-        <span className="text-xs text-[#9298A6]">Connectingâ€¦</span>
+        <span className="text-xs text-[#9298A6]">Connecting…</span>
       </div>
     );
   }
@@ -594,7 +627,7 @@ export default function EverzonDashboard() {
             onClick={() => { setPortalMode(null); setLoginError(""); }}
             className="text-xs text-[#6E7482] underline mb-3 block"
           >
-            â† Back
+            ← Back
           </button>
           <input
             value={loginInput}
@@ -657,7 +690,7 @@ export default function EverzonDashboard() {
             onClick={() => { setPortalMode(null); setAdminError(""); }}
             className="text-xs text-[#6E7482] underline mb-3 block"
           >
-            â† Back
+            ← Back
           </button>
           <input
             type="password"
@@ -854,12 +887,12 @@ function ForgotMemberPasswordModal({ users, passwordRequests, setPasswordRequest
       return;
     }
     setSaving(true);
-    // IMPORTANT: this hash is derived from exactly what the member typed above â€”
+    // IMPORTANT: this hash is derived from exactly what the member typed above —
     // it is never re-generated later, so the password the admin approves is
     // guaranteed to be the same one the member just chose.
     const passwordHash = await hashPassword(newPassword);
     // Read/write through the SAME React state the admin panel reads (passwordRequests),
-    // instead of hitting Firestore directly and bypassing app state â€” this is what
+    // instead of hitting Firestore directly and bypassing app state — this is what
     // previously caused requests to "disappear" and admin approvals to apply a stale entry.
     const updated = [
       ...passwordRequests.filter((r) => r.userId !== upperId),
@@ -893,7 +926,7 @@ function ForgotMemberPasswordModal({ users, passwordRequests, setPasswordRequest
         ) : (
           <>
             <h3 className="font-display font-bold text-lg text-[#1B1F3B]">Forgot Password</h3>
-            <p className="text-xs text-[#6E7482] mt-1 mb-4">Set a new password â€” it will be active after admin approval.</p>
+            <p className="text-xs text-[#6E7482] mt-1 mb-4">Set a new password — it will be active after admin approval.</p>
             <div className="space-y-3 text-left">
               <input value={id} onChange={(e) => setId(e.target.value.toUpperCase())} placeholder="Distributor ID" className="w-full border border-[#D8D5CC] rounded-lg px-3 py-2.5 text-sm font-mono-tag" />
               <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="New Password" className="w-full border border-[#D8D5CC] rounded-lg px-3 py-2.5 text-sm" />
@@ -966,7 +999,7 @@ function ForgotAdminPasscodeModal({ onClose, onSuccess }) {
   );
 }
 
-// Public self-registration â€” usable WITHOUT logging in, so a brand new
+// Public self-registration — usable WITHOUT logging in, so a brand new
 // distributor (or the person recruiting them) can create a joining ID
 // directly from the login screen. Unlike the in-tree "+" join flow, both the
 // sponsor AND the exact placement slot (parent ID + Left/Right) must be
@@ -1053,7 +1086,7 @@ function PublicJoinModal({ users, setUsers, onClose, onSuccess }) {
     loadKey("ez_mailbox", []).then((mailbox) => {
       mailbox.push({
         to: newUser.email,
-        subject: "Welcome to Everzon â€” Your Distributor ID",
+        subject: "Welcome to Everzon — Your Distributor ID",
         body: `ID: ${newId}, Password: ${newPassword}`,
         sentAt: new Date().toISOString(),
       });
@@ -1070,7 +1103,7 @@ function PublicJoinModal({ users, setUsers, onClose, onSuccess }) {
         <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-[#E5E3DC] shrink-0">
           <div>
             <h3 className="font-display font-bold text-lg text-[#1B1F3B]">Create Your Joining ID</h3>
-            <p className="text-[11px] text-[#6E7482] mt-0.5">No login needed â€” fill this in to register.</p>
+            <p className="text-[11px] text-[#6E7482] mt-0.5">No login needed — fill this in to register.</p>
           </div>
           <button onClick={onClose}><X size={20} /></button>
         </div>
@@ -1230,9 +1263,9 @@ function DashboardTab({ currentUser, users, orders, income, isAdmin, carry, cumu
         <div className="grid grid-cols-2 gap-4">
           <StatCard label="Status" value={currentUser.status === "hold" ? "On Hold" : currentUser.status === "active" ? "Active" : "Inactive"}
             color={currentUser.status === "active" ? TEAL : "#B3532F"} />
-          <StatCard label="Active Since" value={currentUser.status === "active" ? `${daysSince(currentUser.joinDate)} days` : "â€”"} color={INDIGO} />
+          <StatCard label="Active Since" value={currentUser.status === "active" ? `${daysSince(currentUser.joinDate)} days` : "—"} color={INDIGO} />
           <StatCard label="Team Size" value={teamSize} color={INDIGO} />
-          <StatCard label="Total Income" value={`â‚¹${totalIncome.toLocaleString("en-IN")}`} color={GOLD} />
+          <StatCard label="Total Income" value={`₹${totalIncome.toLocaleString("en-IN")}`} color={GOLD} />
         </div>
       )}
 
@@ -1515,11 +1548,11 @@ function RankDetailModal({ rank, users, income, cumulativeBV, onClose }) {
                   </div>
                   <div className="text-right">
                     <div className="text-[9px] text-[#9298A6]">Total Income</div>
-                    <div className="font-display font-bold text-sm" style={{ color: rank.color }}>â‚¹{totalIncome.toLocaleString("en-IN")}</div>
+                    <div className="font-display font-bold text-sm" style={{ color: rank.color }}>₹{totalIncome.toLocaleString("en-IN")}</div>
                   </div>
                 </div>
                 <div className="text-[10px] text-[#6E7482] mt-1.5 pt-1.5 border-t border-[#F0EFE9]">
-                  Rank + Royalty + Reward income (all-time): <span className="font-semibold text-[#1B1F3B]">â‚¹{rankTypeIncome.toLocaleString("en-IN")}</span>
+                  Rank + Royalty + Reward income (all-time): <span className="font-semibold text-[#1B1F3B]">₹{rankTypeIncome.toLocaleString("en-IN")}</span>
                 </div>
               </div>
             ))}
@@ -1549,7 +1582,7 @@ function IncomeBreakdown({ entry }) {
           </div>
           <div className="min-w-0">
             <div className="text-[8px] leading-tight text-[#9298A6]">{label}</div>
-            <div className="text-[10px] leading-tight font-semibold text-[#1B1F3B]">â‚¹{entry[key] || 0}</div>
+            <div className="text-[10px] leading-tight font-semibold text-[#1B1F3B]">₹{entry[key] || 0}</div>
           </div>
         </div>
       ))}
@@ -1570,9 +1603,11 @@ function ProductsTab({ products, setProducts, isAdmin }) {
   };
 
   const removeProduct = async (model) => {
+    const target = products.find((p) => p.model === model);
     const updated = products.filter((p) => p.model !== model);
     await persist(updated);
     setConfirmDelete(null);
+    if (target?.image) deleteImageFromStorage(target.image); // cleans up the Storage file, doesn't block the UI
   };
 
   return (
@@ -1609,7 +1644,7 @@ function ProductsTab({ products, setProducts, isAdmin }) {
             <div className="p-4">
               <span className="font-mono-tag text-[10px] bg-[#1B1F3B] text-white px-2 py-0.5 rounded-full">{p.model}</span>
               <div className="font-display font-semibold text-[#1B1F3B] mt-2">{p.name}</div>
-              <div className="font-display font-bold text-lg text-[#0F9B8E] mt-1">â‚¹{p.price.toLocaleString("en-IN")}</div>
+              <div className="font-display font-bold text-lg text-[#0F9B8E] mt-1">₹{p.price.toLocaleString("en-IN")}</div>
             </div>
           </div>
         ))}
@@ -1663,18 +1698,21 @@ function AddProductModal({ products, onClose, onSave }) {
   const [model, setModel] = useState("");
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
-  const [image, setImage] = useState("");
+  const [imagePreview, setImagePreview] = useState("");
+  const [imageFile, setImageFile] = useState(null);
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const handleImage = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setImageFile(file);
     const reader = new FileReader();
-    reader.onload = () => setImage(reader.result);
+    reader.onload = () => setImagePreview(reader.result); // preview only — never saved to Firestore
     reader.readAsDataURL(file);
   };
 
-  const submit = () => {
+  const submit = async () => {
     setError("");
     if (!model.trim() || !name.trim() || !price) {
       setError("All fields are required");
@@ -1689,11 +1727,23 @@ function AddProductModal({ products, onClose, onSave }) {
       setError("Please enter a valid price");
       return;
     }
+    setSaving(true);
+    let imageUrl = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI0Y0RjZGNSIvPjwvc3ZnPg==";
+    if (imageFile) {
+      try {
+        const path = `product-images/${model.trim().toUpperCase()}-${Date.now()}-${imageFile.name}`;
+        imageUrl = await uploadImageToStorage(path, imageFile);
+      } catch (e) {
+        setSaving(false);
+        setError("Image upload failed. Please check your connection and try again.");
+        return;
+      }
+    }
     onSave({
       model: model.trim().toUpperCase(),
       name: name.trim(),
       price: priceNum,
-      image: image || "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI0Y0RjZGNSIvPjwvc3ZnPg==",
+      image: imageUrl,
     });
   };
 
@@ -1711,14 +1761,14 @@ function AddProductModal({ products, onClose, onSave }) {
         <div className="space-y-3">
           <Field label="Model Number"><input value={model} onChange={(e) => setModel(e.target.value)} className="in" placeholder="e.g. ML-90" /></Field>
           <Field label="Product Name"><input value={name} onChange={(e) => setName(e.target.value)} className="in" /></Field>
-          <Field label="Price (â‚¹)"><input type="number" value={price} onChange={(e) => setPrice(e.target.value)} className="in" /></Field>
+          <Field label="Price (₹)"><input type="number" value={price} onChange={(e) => setPrice(e.target.value)} className="in" /></Field>
           <Field label="Product Image (optional)">
             <label className="flex items-center gap-2 border border-dashed border-[#D8D5CC] rounded-lg px-3 py-3 text-xs text-[#6E7482] cursor-pointer">
               <Upload size={14} />
-              {image ? "Image selected" : "Upload photo"}
+              {imagePreview ? "Image selected" : "Upload photo"}
               <input type="file" accept="image/*" onChange={handleImage} className="hidden" />
             </label>
-            {image && <img src={image} alt="preview" className="w-16 h-16 object-cover rounded-lg mt-2" />}
+            {imagePreview && <img src={imagePreview} alt="preview" className="w-16 h-16 object-cover rounded-lg mt-2" />}
           </Field>
         </div>
 
@@ -1730,9 +1780,11 @@ function AddProductModal({ products, onClose, onSave }) {
 
         <button
           onClick={submit}
-          className="w-full bg-[#1B1F3B] text-white font-medium py-3 rounded-xl mt-5"
+          disabled={saving}
+          className="w-full bg-[#1B1F3B] text-white font-medium py-3 rounded-xl mt-5 flex items-center justify-center gap-2 disabled:opacity-60"
         >
-          Add Product
+          {saving ? <Loader2 size={16} className="animate-spin" /> : null}
+          {saving ? "Uploading..." : "Add Product"}
         </button>
         <style>{`.in { width:100%; border:1px solid #D8D5CC; border-radius:8px; padding:8px 10px; font-size:14px; }`}</style>
       </div>
@@ -1812,7 +1864,7 @@ function GenealogyTab({ users, setUsers, currentUser, isAdmin, cumulativeBV, onI
   };
 
   // Admin-only: permanently delete a distributor ID. Only allowed when the ID has no
-  // children (a leaf node), so deleting it can never break the binary tree â€” the
+  // children (a leaf node), so deleting it can never break the binary tree — the
   // LEFT/RIGHT slot under its parent simply becomes an empty, joinable slot again.
   const [deleteError, setDeleteError] = useState("");
   const deleteUser = async (userId) => {
@@ -1831,7 +1883,7 @@ function GenealogyTab({ users, setUsers, currentUser, isAdmin, cumulativeBV, onI
   };
 
   // Admin-only: move an ID and its entire downline team to a different LEFT/RIGHT
-  // slot anywhere in the tree. Only the moved node's parentId/position change â€”
+  // slot anywhere in the tree. Only the moved node's parentId/position change —
   // its children keep pointing at it, so the whole team moves together.
   const [moveTarget, setMoveTarget] = useState(null);
   const moveTeam = async (userId, newParentId, newPosition) => {
@@ -1849,7 +1901,7 @@ function GenealogyTab({ users, setUsers, currentUser, isAdmin, cumulativeBV, onI
       <h2 className="font-display font-bold text-xl text-[#1B1F3B] mb-1">Genealogy</h2>
       <p className="text-xs text-[#6E7482] mb-4">
         {isAdmin
-          ? "Click an empty slot to place a new joining Â· click an ID to manage it"
+          ? "Click an empty slot to place a new joining · click an ID to manage it"
           : "Click an empty slot in your team to place a new joining"}
       </p>
 
@@ -2138,7 +2190,7 @@ function ManageUserModal({ user, users, isAdmin, deleteError, cumulativeBV, onCl
         )}
 
         {isRoot ? (
-          <p className="text-xs text-[#6E7482] mt-4">The HQ ID cannot be put on hold, moved, or deleted â€” but its password can still be set below.</p>
+          <p className="text-xs text-[#6E7482] mt-4">The HQ ID cannot be put on hold, moved, or deleted — but its password can still be set below.</p>
         ) : (
           <div className="flex gap-2 mt-5">
             <button onClick={onClose} className="flex-1 border border-[#D8D5CC] rounded-xl py-2.5 text-sm font-medium">
@@ -2511,7 +2563,7 @@ function JoinModal({ users, setUsers, slot, currentUser, isAdmin, onClose, onSuc
     loadKey("ez_mailbox", []).then((mailbox) => {
       mailbox.push({
         to: newUser.email,
-        subject: "Welcome to Everzon â€” Your Distributor ID",
+        subject: "Welcome to Everzon — Your Distributor ID",
         body: `ID: ${newId}, Password: ${newPassword}`,
         sentAt: new Date().toISOString(),
       });
@@ -2535,7 +2587,7 @@ function JoinModal({ users, setUsers, slot, currentUser, isAdmin, onClose, onSuc
           style={{ WebkitOverflowScrolling: "touch", overscrollBehavior: "contain", touchAction: "pan-y" }}
         >
           <div className="bg-[#EAF4F2] text-xs text-[#0F9B8E] rounded-lg px-3 py-2 mb-4 font-mono-tag">
-            Placed under: {slot.parentId} â€” {slot.position.toUpperCase()}
+            Placed under: {slot.parentId} — {slot.position.toUpperCase()}
           </div>
 
           <div className="space-y-3">
@@ -2661,7 +2713,7 @@ function CredentialsModal({ result, onClose }) {
 
         <div className="flex items-start gap-1.5 text-[10px] text-[#B3532F] bg-[#FCEEE9] rounded-lg p-2.5 mt-3 text-left">
           <AlertCircle size={13} className="shrink-0 mt-0.5" />
-          Email is currently simulated (won't reach a real inbox) â€” once a backend email service is connected, it will also be sent to {result.email}.
+          Email is currently simulated (won't reach a real inbox) — once a backend email service is connected, it will also be sent to {result.email}.
         </div>
 
         <button onClick={copy} className="w-full border border-[#D8D5CC] rounded-xl py-2.5 mt-4 text-sm font-medium flex items-center justify-center gap-2">
@@ -2734,16 +2786,24 @@ function OrdersTab({ users, setUsers, orders, setOrders, payment, setPayment, pr
     }
   };
 
-  const uploadQr = (e) => {
+  const [uploadingQr, setUploadingQr] = useState(false);
+  const [qrError, setQrError] = useState("");
+  const uploadQr = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const updated = { ...payment, qr: reader.result };
+    setQrError("");
+    setUploadingQr(true);
+    try {
+      const oldQr = payment.qr;
+      const url = await uploadImageToStorage(`payment-qr/qr-${Date.now()}-${file.name}`, file);
+      const updated = { ...payment, qr: url };
       await saveKey("ez_payment", updated);
       setPayment(updated);
-    };
-    reader.readAsDataURL(file);
+      if (oldQr) deleteImageFromStorage(oldQr);
+    } catch (err) {
+      setQrError("QR upload failed. Please check your connection and try again.");
+    }
+    setUploadingQr(false);
   };
   const updatePaymentField = async (field, value) => {
     const updated = { ...payment, [field]: value };
@@ -2756,7 +2816,7 @@ function OrdersTab({ users, setUsers, orders, setOrders, payment, setPayment, pr
     const rest = orders.filter((o) => o.status !== "pending");
     return (
       <div>
-        <h2 className="font-display font-bold text-xl text-[#1B1F3B] mb-4">Orders â€” Admin</h2>
+        <h2 className="font-display font-bold text-xl text-[#1B1F3B] mb-4">Orders — Admin</h2>
 
         <div className="mb-5">
           <PasswordRequestsCard
@@ -2774,9 +2834,11 @@ function OrdersTab({ users, setUsers, orders, setOrders, payment, setPayment, pr
             <input placeholder="Account Number" value={payment.accountNumber} onChange={(e) => updatePaymentField("accountNumber", e.target.value)} className="in" />
             <input placeholder="IFSC" value={payment.ifsc} onChange={(e) => updatePaymentField("ifsc", e.target.value)} className="in" />
             <label className="flex items-center gap-2 text-xs text-[#0F9B8E] cursor-pointer mt-2">
-              <Upload size={14} /> QR Code Upload
-              <input type="file" accept="image/*" onChange={uploadQr} className="hidden" />
+              {uploadingQr ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+              {uploadingQr ? "Uploading..." : "QR Code Upload"}
+              <input type="file" accept="image/*" onChange={uploadQr} className="hidden" disabled={uploadingQr} />
             </label>
+            {qrError && <p className="text-[11px] text-[#B3532F]">{qrError}</p>}
             {payment.qr && <img src={payment.qr} alt="QR" className="w-24 h-24 object-contain border border-[#E5E3DC] rounded-lg mt-1" />}
           </div>
         </div>
@@ -2788,10 +2850,10 @@ function OrdersTab({ users, setUsers, orders, setOrders, payment, setPayment, pr
             <div key={o.orderId} className="bg-white rounded-xl border border-[#E5E3DC] p-4">
               <div className="flex justify-between items-start">
                 <div>
-                  <div className="font-mono-tag text-xs text-[#6E7482]">{o.orderId} Â· {o.userId}</div>
+                  <div className="font-mono-tag text-xs text-[#6E7482]">{o.orderId} · {o.userId}</div>
                   <div className="text-sm mt-1">{o.items.map((it) => `${it.name} x${it.qty}`).join(", ")}</div>
                 </div>
-                <div className="font-display font-bold text-[#1B1F3B]">â‚¹{o.total.toLocaleString("en-IN")}</div>
+                <div className="font-display font-bold text-[#1B1F3B]">₹{o.total.toLocaleString("en-IN")}</div>
               </div>
               <div className="flex gap-2 mt-3">
                 <button onClick={() => approveOrder(o.orderId, true)} className="flex-1 bg-[#0F9B8E] text-white text-xs font-medium py-2 rounded-lg">Approve</button>
@@ -2805,7 +2867,7 @@ function OrdersTab({ users, setUsers, orders, setOrders, payment, setPayment, pr
         <div className="space-y-2">
           {rest.map((o) => (
             <div key={o.orderId} className="bg-white rounded-xl border border-[#E5E3DC] p-3 flex justify-between text-xs">
-              <span className="font-mono-tag">{o.orderId} Â· {o.userId}</span>
+              <span className="font-mono-tag">{o.orderId} · {o.userId}</span>
               <span className={o.status === "approved" ? "text-[#0F9B8E]" : "text-red-500"}>{o.status}</span>
             </div>
           ))}
@@ -2827,7 +2889,7 @@ function OrdersTab({ users, setUsers, orders, setOrders, payment, setPayment, pr
             <img src={p.image} alt={p.name} className="w-14 h-14 rounded-lg object-cover" loading="lazy" decoding="async" />
             <div className="flex-1">
               <div className="text-sm font-medium text-[#1B1F3B]">{p.name}</div>
-              <div className="text-xs text-[#6E7482]">â‚¹{p.price.toLocaleString("en-IN")}</div>
+              <div className="text-xs text-[#6E7482]">₹{p.price.toLocaleString("en-IN")}</div>
             </div>
             <div className="flex items-center gap-2">
               <button onClick={() => setCart((c) => ({ ...c, [p.model]: Math.max(0, (c[p.model] || 0) - 1) }))} className="w-7 h-7 rounded-full border border-[#D8D5CC]">-</button>
@@ -2841,7 +2903,7 @@ function OrdersTab({ users, setUsers, orders, setOrders, payment, setPayment, pr
       {total > 0 && (
         <div className="bg-[#1B1F3B] rounded-xl p-4 mt-4 flex items-center justify-between">
           <span className="text-white text-sm">Total</span>
-          <span className="text-white font-display font-bold text-lg">â‚¹{total.toLocaleString("en-IN")}</span>
+          <span className="text-white font-display font-bold text-lg">₹{total.toLocaleString("en-IN")}</span>
         </div>
       )}
 
@@ -2852,7 +2914,7 @@ function OrdersTab({ users, setUsers, orders, setOrders, payment, setPayment, pr
       >
         {placing ? "Placing..." : "Place Order"}
       </button>
-      {placed && <div className="text-center text-xs text-[#0F9B8E] mt-2">Order placed â€” please wait for admin approval</div>}
+      {placed && <div className="text-center text-xs text-[#0F9B8E] mt-2">Order placed — please wait for admin approval</div>}
 
       <div className="bg-white rounded-2xl border border-[#E5E3DC] p-4 mt-6">
         <h3 className="font-display font-semibold text-sm text-[#1B1F3B] mb-3 flex items-center gap-2">
@@ -2919,7 +2981,7 @@ function IncomeTab({ users, orders, setOrders, income, setIncome, carry, setCarr
     const newCarry = { ...carry };
     users.forEach((u) => {
       // Root (HQ) now participates in binary matching just like any other
-      // distributor â€” this is what makes it eligible for Binary, Rank,
+      // distributor — this is what makes it eligible for Binary, Rank,
       // Royalty and Reward income too, not just Direct and Level.
       const leftChild = getChildren(users, u.id).find((c) => c.position === "left");
       const rightChild = getChildren(users, u.id).find((c) => c.position === "right");
@@ -2962,8 +3024,8 @@ function IncomeTab({ users, orders, setOrders, income, setIncome, carry, setCarr
     });
 
     const directMap = {};
-    // Direct Income must fire on a buyer's TRUE first-ever approved order â€” not just
-    // "no prior CLOSED order" â€” otherwise if a brand-new buyer's first two orders land
+    // Direct Income must fire on a buyer's TRUE first-ever approved order — not just
+    // "no prior CLOSED order" — otherwise if a brand-new buyer's first two orders land
     // in the same unclosed batch, both would incorrectly pay Direct Income. We instead
     // find each buyer's earliest approved order (closed or not) across their full
     // history and only pay when the order being processed IS that one.
@@ -3035,7 +3097,7 @@ function IncomeTab({ users, orders, setOrders, income, setIncome, carry, setCarr
       const totalAmt = binary + direct + level + rank + royalty + reward;
       if (totalAmt > 0) {
         // 5% admin charge is deducted from the gross commission before it is
-        // credited â€” "total" (used everywhere for the distributor's payable
+        // credited — "total" (used everywhere for the distributor's payable
         // amount) is always the NET figure; grossTotal/adminCharge are kept
         // alongside for the income slip breakdown.
         const adminCharge = totalAmt * ADMIN_CHARGE_PCT;
@@ -3073,7 +3135,7 @@ function IncomeTab({ users, orders, setOrders, income, setIncome, carry, setCarr
     const totalNetPaid = newIncomeEntries.reduce((s, e) => s + e.total, 0);
     const totalAdminCharge = newIncomeEntries.reduce((s, e) => s + e.adminCharge, 0);
     setLastRun(
-      `Closing done â€” Total Cycle BV â‚¹${totalCycleBV.toLocaleString("en-IN")}, Scale Factor ${scaleFactor.toFixed(2)}. Net income credited to ${newIncomeEntries.length} distributors: â‚¹${totalNetPaid.toLocaleString("en-IN")} (Admin charge withheld: â‚¹${totalAdminCharge.toLocaleString("en-IN")}). Unmatched BV carried forward for next week.`
+      `Closing done — Total Cycle BV ₹${totalCycleBV.toLocaleString("en-IN")}, Scale Factor ${scaleFactor.toFixed(2)}. Net income credited to ${newIncomeEntries.length} distributors: ₹${totalNetPaid.toLocaleString("en-IN")} (Admin charge withheld: ₹${totalAdminCharge.toLocaleString("en-IN")}). Unmatched BV carried forward for next week.`
     );
   };
 
@@ -3083,7 +3145,7 @@ function IncomeTab({ users, orders, setOrders, income, setIncome, carry, setCarr
     const weeks = [...new Set(income.map((i) => i.weekLabel))].sort().reverse();
     return (
       <div>
-        <h2 className="font-display font-bold text-xl text-[#1B1F3B] mb-4">Income â€” Weekly Closing</h2>
+        <h2 className="font-display font-bold text-xl text-[#1B1F3B] mb-4">Income — Weekly Closing</h2>
         <button
           onClick={runWeeklyClosing}
           disabled={running}
@@ -3109,7 +3171,7 @@ function IncomeTab({ users, orders, setOrders, income, setIncome, carry, setCarr
                       </span>
                       <div className="flex items-center gap-2">
                         {rank && <RankBadge rank={rank} size="sm" />}
-                        <span className="font-semibold text-[#0F9B8E]">â‚¹{i.total}</span>
+                        <span className="font-semibold text-[#0F9B8E]">₹{i.total}</span>
                         <button onClick={() => setSlipEntry(i)} className="text-[#6E7482] hover:text-[#1B1F3B]" title="View Income Slip">
                           <Receipt size={14} />
                         </button>
@@ -3143,9 +3205,9 @@ function IncomeTab({ users, orders, setOrders, income, setIncome, carry, setCarr
         {myRank && <RankBadge rank={myRank} />}
       </div>
       <div className="grid grid-cols-2 gap-3 mb-5">
-        <StatCard label="My Business (BV)" value={`â‚¹${myOrdersBV.toLocaleString("en-IN")}`} color={INDIGO} />
-        <StatCard label="This Week" value={latestWeek ? `â‚¹${latestWeek.total}` : "â‚¹0"} color={TEAL} />
-        <StatCard label="Total Income" value={`â‚¹${totalIncome.toLocaleString("en-IN")}`} color={GOLD} />
+        <StatCard label="My Business (BV)" value={`₹${myOrdersBV.toLocaleString("en-IN")}`} color={INDIGO} />
+        <StatCard label="This Week" value={latestWeek ? `₹${latestWeek.total}` : "₹0"} color={TEAL} />
+        <StatCard label="Total Income" value={`₹${totalIncome.toLocaleString("en-IN")}`} color={GOLD} />
         <StatCard label="Weeks Paid" value={myIncome.length} color={INDIGO} />
       </div>
       <p className="text-[10px] text-[#9298A6] mb-4 -mt-2">
@@ -3160,7 +3222,7 @@ function IncomeTab({ users, orders, setOrders, income, setIncome, carry, setCarr
             <div className="flex justify-between items-center">
               <span className="text-xs font-mono-tag text-[#6E7482]">{i.weekLabel} {i.rankName && <span className="text-[#D4AF37] font-semibold ml-1">{i.rankName}</span>}</span>
               <div className="flex items-center gap-2">
-                <span className="font-display font-bold text-[#0F9B8E]">â‚¹{i.total}</span>
+                <span className="font-display font-bold text-[#0F9B8E]">₹{i.total}</span>
                 <button onClick={() => setSlipEntry(i)} className="text-[#6E7482] hover:text-[#1B1F3B]" title="View Income Slip">
                   <Receipt size={15} />
                 </button>
@@ -3210,7 +3272,7 @@ function IncomeSlipModal({ entry, users, onClose }) {
           <div className="flex items-center justify-between mb-4">
             <div>
               <div className="font-display font-semibold text-sm text-[#1B1F3B]">{person?.name || entry.userId}</div>
-              <div className="font-mono-tag text-[11px] text-[#6E7482]">{entry.userId} Â· Week of {entry.weekLabel}</div>
+              <div className="font-mono-tag text-[11px] text-[#6E7482]">{entry.userId} · Week of {entry.weekLabel}</div>
             </div>
             {rank && <RankBadge rank={rank} size="sm" />}
           </div>
@@ -3219,20 +3281,20 @@ function IncomeSlipModal({ entry, users, onClose }) {
             {rows.map((r) => (
               <div key={r.label} className="flex justify-between px-3 py-2 text-xs border-b border-[#F0EFE9] last:border-b-0">
                 <span className="text-[#6E7482]">{r.label}</span>
-                <span className="font-mono-tag text-[#1B1F3B]">â‚¹{r.value.toLocaleString("en-IN")}</span>
+                <span className="font-mono-tag text-[#1B1F3B]">₹{r.value.toLocaleString("en-IN")}</span>
               </div>
             ))}
             <div className="flex justify-between px-3 py-2 text-xs bg-[#FAF9F6] font-semibold">
               <span className="text-[#1B1F3B]">Gross Total</span>
-              <span className="font-mono-tag text-[#1B1F3B]">â‚¹{gross.toLocaleString("en-IN")}</span>
+              <span className="font-mono-tag text-[#1B1F3B]">₹{gross.toLocaleString("en-IN")}</span>
             </div>
             <div className="flex justify-between px-3 py-2 text-xs">
               <span className="text-[#B3532F]">Admin Charge (5%)</span>
-              <span className="font-mono-tag text-[#B3532F]">âˆ’â‚¹{adminCharge.toLocaleString("en-IN")}</span>
+              <span className="font-mono-tag text-[#B3532F]">−₹{adminCharge.toLocaleString("en-IN")}</span>
             </div>
             <div className="flex justify-between px-3 py-3 text-sm font-bold" style={{ backgroundColor: "#EAF4F2" }}>
               <span className="text-[#0F9B8E]">Net Payable</span>
-              <span className="font-mono-tag text-[#0F9B8E]">â‚¹{entry.total.toLocaleString("en-IN")}</span>
+              <span className="font-mono-tag text-[#0F9B8E]">₹{entry.total.toLocaleString("en-IN")}</span>
             </div>
           </div>
 
